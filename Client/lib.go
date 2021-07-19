@@ -63,15 +63,6 @@ func postWithJsonLogin(addr, username, password string) (Response, error) {
 	return result, nil
 }
 
-// 若输入的地址不含开头，补全开头的http://
-func CompleteIPAddr(addr string) string {
-	if !strings.HasPrefix(addr, "http://") ||
-		!strings.HasPrefix(addr, "https://") {
-		return "http://" + addr
-	}
-	return addr
-}
-
 // CheckMD5 计算md5值
 func CheckMD5(s string) string {
 	b := []byte(s)
@@ -162,34 +153,3 @@ func Zip(srcFileOrDir string, destZip string) error {
 
 	return nil
 }
-
-/*
-func get() {
-	//get请求
-	//http.Get的参数必须是带http://协议头的完整url,不然请求结果为空
-	resp, _ := http.Get("http://localhost:8080/login2?username=admin&password=123456")
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	//fmt.Println(string(body))
-	fmt.Printf("Get request result: %s\n", string(body))
-}
-
-func postWithJson() {
-	//post请求提交json数据
-	auths := Auth{"admin", "123456"}
-	ba, _ := json.Marshal(auths)
-	resp, _ := http.Post("http://localhost:8080/login1", "application/json", bytes.NewBuffer([]byte(ba)))
-	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("Post request with json result: %s\n", string(body))
-}
-
-func postWithUrlencoded() {
-	//post请求提交application/x-www-form-urlencoded数据
-	form := make(url.Values)
-	form.Set("username", "admin")
-	form.Add("password", "123456")
-	resp, _ := http.PostForm("http://localhost:8080/login2", form)
-	body, _ := io.ReadAll(resp.Body)
-	fmt.Printf("Post request with application/x-www-form-urlencoded result: %s\n", string(body))
-}
-*/

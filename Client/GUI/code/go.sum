@@ -1,0 +1,6 @@
+github.com/ying32/dylib v0.0.0-20210414124638-bf395b2d391a h1:kyKEUVx/Q2CVZmGMAtgChD4U+hvc/oRU7BgaOK0u7bY=
+github.com/ying32/dylib v0.0.0-20210414124638-bf395b2d391a/go.mod h1:WPBTfbqg/aA1xqHFPB4fgBHETq/G/75yErbnexmaEOo=
+github.com/ying32/govcl v2.0.10+incompatible h1:Gd76fALUdePCGEpZhkSvVpp06n9hXramgGTm6WjJVKc=
+github.com/ying32/govcl v2.0.10+incompatible/go.mod h1:yZVtbJ9Md1nAVxtHKIriKZn4K6TQYqI1en3sN/m9FJ8=
+github.com/ying32/liblclbinres v0.0.0-20210305091625-aea78f1f52c0 h1:f8x44jTxqYQ0lnB45pax+07u0beGhpfjWw+iXxRsbGY=
+github.com/ying32/liblclbinres v0.0.0-20210305091625-aea78f1f52c0/go.mod h1:oEmgAOPt+dALMzap3HgEQnaN+iCLE7m3C867jERInaI=

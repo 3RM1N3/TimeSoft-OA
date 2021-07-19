@@ -13,14 +13,6 @@ func TestCheckMD5(t *testing.T) {
 	}
 }
 
-func TestCompleteIPAddr(t *testing.T) {
-	got := CompleteIPAddr("0.0.0.0")
-	want := "http://0.0.0.0"
-	if got != want {
-		t.Errorf("expect %v, however %v", want, got)
-	}
-}
-
 func TestZip(t *testing.T) {
 	got := Zip(`D:\projects\computer-exam`, "a.zip")
 	want := errors.New("")

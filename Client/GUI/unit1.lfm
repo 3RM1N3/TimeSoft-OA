@@ -1,0 +1,123 @@
+object FormLogin: TFormLogin
+  Left = 785
+  Height = 300
+  Top = 319
+  Width = 430
+  HorzScrollBar.Page = 1
+  VertScrollBar.Page = 1
+  Anchors = []
+  BorderIcons = [biSystemMenu, biMinimize]
+  BorderStyle = bsSingle
+  Caption = '登录'
+  ClientHeight = 300
+  ClientWidth = 430
+  OnCreate = FormCreate
+  Position = poDesktopCenter
+  LCLVersion = '2.0.12.0'
+  Scaled = False
+  object ButtonLogin: TButton
+    Left = 95
+    Height = 40
+    Top = 240
+    Width = 240
+    Caption = '登录'
+    Font.Height = -15
+    ParentFont = False
+    TabOrder = 0
+  end
+  object EditServerAddr: TEdit
+    Left = 144
+    Height = 29
+    Top = 110
+    Width = 200
+    Anchors = []
+    Font.Height = -16
+    MaxLength = 20
+    ParentFont = False
+    TabOrder = 1
+    TextHint = '0.0.0.0:8080'
+  end
+  object EditUser: TEdit
+    Left = 144
+    Height = 29
+    Top = 145
+    Width = 200
+    Anchors = []
+    Font.Height = -16
+    MaxLength = 15
+    ParentFont = False
+    TabOrder = 2
+  end
+  object Label1: TLabel
+    Left = 80
+    Height = 19
+    Top = 115
+    Width = 52
+    Anchors = []
+    Caption = '服务器：'
+    Font.Height = -13
+    ParentColor = False
+    ParentFont = False
+    OnClick = Label1Click
+  end
+  object Edit1: TEdit
+    Left = 144
+    Height = 29
+    Top = 180
+    Width = 200
+    Anchors = []
+    EchoMode = emPassword
+    Font.Height = -16
+    MaxLength = 18
+    ParentFont = False
+    PasswordChar = '*'
+    TabOrder = 3
+  end
+  object Label2: TLabel
+    Left = 81
+    Height = 19
+    Top = 150
+    Width = 51
+    Anchors = []
+    Caption = '账   号：'
+    Font.Height = -13
+    ParentColor = False
+    ParentFont = False
+    OnClick = Label1Click
+  end
+  object Label3: TLabel
+    Left = 81
+    Height = 19
+    Top = 185
+    Width = 51
+    Anchors = []
+    Caption = '密   码：'
+    Font.Height = -13
+    ParentColor = False
+    ParentFont = False
+    OnClick = Label1Click
+  end
+  object Label4: TLabel
+    Left = 110
+    Height = 25
+    Top = 40
+    Width = 210
+    Alignment = taCenter
+    Anchors = []
+    AutoSize = False
+    Caption = '时源办公自动化管理系统'
+    Font.Height = -19
+    ParentColor = False
+    ParentFont = False
+  end
+  object LabelSignUp: TLabel
+    Left = 10
+    Height = 17
+    Top = 273
+    Width = 48
+    Caption = '注册账号'
+    Font.Color = clGrayText
+    ParentColor = False
+    ParentFont = False
+  end
+end
