@@ -66,7 +66,7 @@ func NewJosnPacket(t PacketType, b []byte, out chan SocketPacket) {
 	}
 }
 
-// 打包数据并发送
+// 打包zip数据并拆分成包传入out
 func NewZipPacket(f *os.File, out chan SocketPacket) error {
 	stat, err := f.Stat()
 	if err != nil {
@@ -85,7 +85,7 @@ func NewZipPacket(f *os.File, out chan SocketPacket) error {
 
 	out <- SocketPacket{
 		TypeByte:    FileUpload,
-		DataLen:     uint32(zipSize + 10),
+		DataLen:     uint32(len(encodedFileJson) + 10),
 		CurrentPart: 0,
 		AllPart:     uint16(allPart),
 		Data:        encodedFileJson,
@@ -94,32 +94,25 @@ func NewZipPacket(f *os.File, out chan SocketPacket) error {
 
 	buf := make([]byte, 8388608)
 	endByte := NotOverEnd
-	for i := 0; i < int(allPart); i++ {
-		out <- 
-	}
 
-	if stat.Size() > 8388608 {
-		buf := make([]byte, 8388608)
-		for {
-			n, err := f.Read(buf)
-			if err != nil {
-				close(fileSlice)
-				return
-			} else {
-				fmt.Println("正常发送")
-				fileSlice <- buf[:n]
-			}
+	for i := 0; i < int(allPart); i++ {
+		n, err := f.Read(buf)
+		if err != nil {
+			return err
+		}
+
+		if i == int(allPart)-1 {
+			endByte = OverEnd
+		}
+
+		out <- SocketPacket{
+			TypeByte:    ZipArchive,
+			DataLen:     uint32(n + 10),
+			CurrentPart: uint16(i) + 1,
+			AllPart:     uint16(allPart),
+			Data:        buf[:n],
+			EndByte:     endByte,
 		}
 	}
-
-	a := []SocketPacket{
-		SocketPacket{
-			PacketType:  "ZA",
-			DataLen:     uint32(len(b) + 9),
-			CurrentPart: uint16(1),
-			AllPart:     uint16(1),
-			Data:        b,
-			EndByte:     0x01,
-		},
-	}
+	return nil
 }
