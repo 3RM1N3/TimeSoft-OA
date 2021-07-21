@@ -1,19 +1,23 @@
 package main
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
+	"io"
+	"log"
 	"net"
+
+	SP "TimeSoft-OA/SocketPacket"
 )
 
 func main() {
-	byteChan := make(chan []byte, 128)
 	listen, err := net.Listen("tcp", ":8888") // 创建用于监听的 socket
 	if err != nil {
-		fmt.Println("listen err=", err)
+		log.Println("listen err=", err)
 		return
 	}
 	fmt.Println("开始监听...")
-	go processBytes(byteChan) // 处理收到的字节数据
 
 	defer listen.Close() // 服务器结束前关闭 listener
 
@@ -22,67 +26,112 @@ func main() {
 		fmt.Println("阻塞等待客户端连接...")
 		conn, err := listen.Accept() // 创建用户数据通信的socket
 		if err != nil {
-			fmt.Println("Accept() err=", err)
-		} else {
-			fmt.Printf("与客户端%s连接成功\n", conn.RemoteAddr().String())
+			log.Println("Accept() err=", err)
+			continue
 		}
-
-		go process(conn, byteChan) // 起一个协程，为客户端服务
+		fmt.Printf("与客户端%s连接成功\n", conn.RemoteAddr().String())
+		go process(conn) // 起一个协程，为该客户端服务
 	}
 
 }
 
-func process(conn net.Conn, byteChan chan []byte) {
+func process(conn net.Conn) {
+	byteChan := make(chan SP.SocketPacket, 128)
+	go processBytes(byteChan) // 处理收到的字节数据
+	read(conn, byteChan)
+}
+
+// 读取部分
+func read(conn net.Conn, byteChan chan SP.SocketPacket) {
 	firstRead := true
-	var byteBuf []byte
+	byteBuf := new(bytes.Buffer)
+	var readedLength uint16
+	var sp SP.SocketPacket
 	defer conn.Close()
+
 	for {
-
 		buf := make([]byte, 1024) // 创建一个新切片， 用作保存数据的缓冲区
-		fmt.Printf("等待%s发送信息...\n", conn.RemoteAddr().String())
-		n, err := conn.Read(buf) // 从conn中读取客户端发送的数据内容
+		fmt.Printf("\n等待%s发送信息...\n", conn.RemoteAddr().String())
 
-		byteBuf = append(byteBuf, buf[:n]...)
-		//println(string(byteBuf[len(byteBuf)-6:]))
-
-		if !firstRead && string(byteBuf[len(byteBuf)-6:]) == "\\ioEOF" {
-			byteBuf = byteBuf[:len(byteBuf)-6]
-			byteChan <- byteBuf // 传出完整[]byte
-			//fmt.Println("\n收到了：", string(byteBuf))
-			buf = make([]byte, 1024)
-			byteBuf = []byte{}
-			firstRead = true
-		}
-		firstRead = false
+		n, err := conn.Read(buf) // 读取数据，无则阻塞
 		if err != nil {
-			fmt.Printf("客户端退出，与客户端断开连接\n")
+			log.Printf("客户端退出，与%s断开连接\n", conn.RemoteAddr().String())
 			return
 		}
-		//fmt.Printf("当前线程 %v, 接受消息 %s\n", goID(), string(buf[:n]))
 
-		// 回写数据给客户端
-		_, err = conn.Write([]byte("This is Server"))
+		println(conn.RemoteAddr().String(), "此批接收完毕，读取字符数：", n)
+		println("内容：", string(buf[:n]))
+		readedLength += uint16(n)
+		byteBuf.Write(buf[:n])
+
+		if firstRead {
+			println(conn.RemoteAddr().String(), "第一次读取，判断文件头")
+			sp, _ = ProcessPackHead(byteBuf)
+			println(conn.RemoteAddr().String(), "此次接收类型：", sp.PacketType, "  长度：", sp.DataLen)
+			firstRead = false
+		}
+
+		if sp.DataLen <= readedLength {
+			println(conn.RemoteAddr().String(), "此包传输完毕待处理")
+			i := sp.DataLen + uint16(n) - readedLength - 1
+			fmt.Printf("%s 终止符位置在：%d，计算得出的终止符为：%x\n", conn.RemoteAddr().String(), i, buf[i])
+			if buf[i] == 0x01 {
+				println(conn.RemoteAddr().String(), "终止符相同，处理和传出数据")
+				sp.Data = byteBuf.Next(int(sp.DataLen) - 9)
+				fmt.Printf("传出数据长度为：%d\n", len(sp.Data))
+				fmt.Println("传出数据内容为：\n", string(sp.Data))
+				readedLength = 0
+				byteBuf.ReadByte()
+				firstRead = true
+				//byteChan <- sp
+			}
+		}
+	}
+
+	// 返回数据
+
+}
+
+// 处理数据头
+func ProcessPackHead(byteBuf *bytes.Buffer) (SP.SocketPacket, error) {
+	sp := SP.SocketPacket{}
+	if byteBuf.Len() < 8 {
+		return sp, errors.New("[]byte is too short")
+	}
+	sp.PacketType = string(byteBuf.Next(2))
+	sp.DataLen, _ = SP.ByteToUint16(byteBuf.Next(2))
+	sp.CurrentPart, _ = SP.ByteToUint16(byteBuf.Next(2))
+	sp.AllPart, _ = SP.ByteToUint16(byteBuf.Next(2))
+
+	return sp, nil
+}
+
+// 向客户端发送数据
+func send(conn net.Conn, b []byte) error {
+	buf := make([]byte, 32)
+
+	breader := bytes.NewReader(b)
+
+	for {
+		n, err := breader.Read(buf)
+		if err == io.EOF {
+			if _, err := conn.Write(buf[:n]); err != nil {
+				return err
+			}
+			return nil
+		}
 		if err != nil {
-			fmt.Println("Write err:", err)
-			return
+			return err
+		}
+
+		if _, err := conn.Write(buf[:n]); err != nil {
+			return err
 		}
 	}
 }
 
 // 接收处理[]byte
-func processBytes(byteChan chan []byte) {
-	for {
-		println(string(<-byteChan))
-	}
+func processBytes(byteChan chan SP.SocketPacket) {
+	sp := <-byteChan
+	println(string(sp.Data))
 }
-
-/*
-func goID() uint64 {
-	b := make([]byte, 64)
-	b = b[:runtime.Stack(b, false)]
-	b = bytes.TrimPrefix(b, []byte("goroutine "))
-	b = b[:bytes.IndexByte(b, ' ')]
-	n, _ := strconv.ParseUint(string(b), 10, 64)
-	return n
-}
-*/
