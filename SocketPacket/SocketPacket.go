@@ -2,32 +2,34 @@ package SocketPacket
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"os"
 )
 
 type SocketPacket struct {
-	PacketType  string
-	DataLen     uint32 // uint16
-	CurrentPart uint16 // uint16
-	AllPart     uint16 // uint16
+	TypeByte    PacketType
+	DataLen     uint32
+	CurrentPart uint16
+	AllPart     uint16
 	Data        []byte
-	EndByte     byte
+	EndByte     PacketEndByte
 }
 
-func NewSocketPacket(b []byte) SocketPacket {
+func NewPacket(b []byte) SocketPacket {
 	return SocketPacket{
-		PacketType:  "ZA",
-		DataLen:     uint32(len(b) + 9),
+		TypeByte:    ZipArchive,
+		DataLen:     uint32(len(b) + 10),
 		CurrentPart: uint16(1),
 		AllPart:     uint16(1),
 		Data:        b,
-		EndByte:     0x01,
+		EndByte:     OverEnd,
 	}
 }
 
 func (sp *SocketPacket) String() string {
-	return fmt.Sprintf("Type: SocketPacket\n    PacketType:  %s,\n    DataLen:     %d,\n    CurrentPart: %d,\n    AllPart:     %d,\n    Data:        []byte{...},\n    EndByte:     %X,",
-		sp.PacketType,
+	return fmt.Sprintf("Type: SocketPacket\n    PacketType:  %X,\n    DataLen:     %d,\n    CurrentPart: %d,\n    AllPart:     %d,\n    Data:        []byte{...},\n    EndByte:     %X,",
+		sp.TypeByte,
 		sp.DataLen,
 		sp.CurrentPart,
 		sp.AllPart,
@@ -36,7 +38,7 @@ func (sp *SocketPacket) String() string {
 
 func (sp *SocketPacket) Pack() []byte {
 	buf := new(bytes.Buffer)
-	buf.Write([]byte(sp.PacketType)) // 写入类型
+	buf.WriteByte(byte(sp.TypeByte)) // 写入类型
 
 	get2bytes, _ := Uint32ToByte(sp.DataLen)
 	buf.Write(get2bytes)
@@ -48,7 +50,76 @@ func (sp *SocketPacket) Pack() []byte {
 	buf.Write(get2bytes)
 
 	buf.Write(sp.Data)
-	buf.WriteByte(sp.EndByte)
+	buf.WriteByte(byte(sp.EndByte))
 
 	return buf.Bytes()
+}
+
+func NewJosnPacket(t PacketType, b []byte, out chan SocketPacket) {
+	out <- SocketPacket{
+		TypeByte:    t,
+		DataLen:     uint32(len(b) + 10),
+		CurrentPart: 1,
+		AllPart:     1,
+		Data:        b,
+		EndByte:     OverEnd,
+	}
+}
+
+// 打包数据并发送
+func NewZipPacket(f *os.File, out chan SocketPacket) error {
+	stat, err := f.Stat()
+	if err != nil {
+		return err
+	}
+
+	zipSize := stat.Size()
+	allPart := zipSize/8388608 + 1
+
+	fileJson := FileUploadJson{
+		FileName: stat.Name(),
+		FileSize: zipSize,
+	}
+
+	encodedFileJson, _ := json.Marshal(fileJson)
+
+	out <- SocketPacket{
+		TypeByte:    FileUpload,
+		DataLen:     uint32(zipSize + 10),
+		CurrentPart: 0,
+		AllPart:     uint16(allPart),
+		Data:        encodedFileJson,
+		EndByte:     NotOverEnd,
+	}
+
+	buf := make([]byte, 8388608)
+	endByte := NotOverEnd
+	for i := 0; i < int(allPart); i++ {
+		out <- 
+	}
+
+	if stat.Size() > 8388608 {
+		buf := make([]byte, 8388608)
+		for {
+			n, err := f.Read(buf)
+			if err != nil {
+				close(fileSlice)
+				return
+			} else {
+				fmt.Println("正常发送")
+				fileSlice <- buf[:n]
+			}
+		}
+	}
+
+	a := []SocketPacket{
+		SocketPacket{
+			PacketType:  "ZA",
+			DataLen:     uint32(len(b) + 9),
+			CurrentPart: uint16(1),
+			AllPart:     uint16(1),
+			Data:        b,
+			EndByte:     0x01,
+		},
+	}
 }
