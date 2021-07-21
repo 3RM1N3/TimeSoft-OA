@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -36,16 +37,20 @@ func main() {
 }
 
 func process(conn net.Conn) {
-	byteChan := make(chan SP.SocketPacket, 128)
-	go processBytes(byteChan) // 处理收到的字节数据
-	read(conn, byteChan)
+	receivedSPChan := make(chan SP.SocketPacket, 128)
+	sendSPChan := make(chan SP.SocketPacket, 64)
+
+	go send(conn, sendSPChan)       // 发送数据
+	go processBytes(receivedSPChan) // 处理收到的字节数据
+
+	read(conn, receivedSPChan, sendSPChan)
 }
 
 // 读取部分
-func read(conn net.Conn, byteChan chan SP.SocketPacket) {
+func read(conn net.Conn, receivedSPChan chan SP.SocketPacket, sendSPChan chan SP.SocketPacket) {
 	firstRead := true
 	byteBuf := new(bytes.Buffer)
-	var readedLength uint16
+	var readedLength uint32
 	var sp SP.SocketPacket
 	defer conn.Close()
 
@@ -61,23 +66,23 @@ func read(conn net.Conn, byteChan chan SP.SocketPacket) {
 
 		println(conn.RemoteAddr().String(), "此批接收完毕，读取字符数：", n)
 		println("内容：", string(buf[:n]))
-		readedLength += uint16(n)
+		readedLength += uint32(n)
 		byteBuf.Write(buf[:n])
 
 		if firstRead {
 			println(conn.RemoteAddr().String(), "第一次读取，判断文件头")
 			sp, _ = ProcessPackHead(byteBuf)
-			println(conn.RemoteAddr().String(), "此次接收类型：", sp.PacketType, "  长度：", sp.DataLen)
+			println(conn.RemoteAddr().String(), "此次接收类型：", sp.TypeByte, "  长度：", sp.DataLen)
 			firstRead = false
 		}
 
 		if sp.DataLen <= readedLength {
 			println(conn.RemoteAddr().String(), "此包传输完毕待处理")
-			i := sp.DataLen + uint16(n) - readedLength - 1
+			i := sp.DataLen + uint32(n) - readedLength - 1
 			fmt.Printf("%s 终止符位置在：%d，计算得出的终止符为：%x\n", conn.RemoteAddr().String(), i, buf[i])
 			if buf[i] == 0x01 {
 				println(conn.RemoteAddr().String(), "终止符相同，处理和传出数据")
-				sp.Data = byteBuf.Next(int(sp.DataLen) - 9)
+				sp.Data = byteBuf.Next(int(sp.DataLen) - 10)
 				fmt.Printf("传出数据长度为：%d\n", len(sp.Data))
 				fmt.Println("传出数据内容为：\n", string(sp.Data))
 				readedLength = 0
@@ -89,17 +94,23 @@ func read(conn net.Conn, byteChan chan SP.SocketPacket) {
 	}
 
 	// 返回数据
-
+	report := ReportJson{
+		Success: true,
+		Msg:     "",
+	}
+	reportJsonByte, _ := json.Marshal(report)
+	SP.NewJosnPacket(SP.Report, reportJsonByte, sendSPChan)
 }
 
 // 处理数据头
 func ProcessPackHead(byteBuf *bytes.Buffer) (SP.SocketPacket, error) {
 	sp := SP.SocketPacket{}
-	if byteBuf.Len() < 8 {
+	if byteBuf.Len() < 9 {
 		return sp, errors.New("[]byte is too short")
 	}
-	sp.PacketType = string(byteBuf.Next(2))
-	sp.DataLen, _ = SP.ByteToUint16(byteBuf.Next(2))
+	typeByte, _ := byteBuf.ReadByte()
+	sp.TypeByte = SP.PacketType(typeByte)
+	sp.DataLen, _ = SP.ByteToUint32(byteBuf.Next(4))
 	sp.CurrentPart, _ = SP.ByteToUint16(byteBuf.Next(2))
 	sp.AllPart, _ = SP.ByteToUint16(byteBuf.Next(2))
 
@@ -107,7 +118,9 @@ func ProcessPackHead(byteBuf *bytes.Buffer) (SP.SocketPacket, error) {
 }
 
 // 向客户端发送数据
-func send(conn net.Conn, b []byte) error {
+func send(conn net.Conn, spChan chan SP.SocketPacket) error {
+	sp := <-spChan
+	b := sp.Pack()
 	buf := make([]byte, 32)
 
 	breader := bytes.NewReader(b)
@@ -115,9 +128,6 @@ func send(conn net.Conn, b []byte) error {
 	for {
 		n, err := breader.Read(buf)
 		if err == io.EOF {
-			if _, err := conn.Write(buf[:n]); err != nil {
-				return err
-			}
 			return nil
 		}
 		if err != nil {
