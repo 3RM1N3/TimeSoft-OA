@@ -1,14 +1,14 @@
 可发送的最大文件4096 MB
 一个包最大8 MB
 
-var pack []byte
-
-pack[:2] 文件类型
-pack[2:4] 此包数据正文长度        最大值8192
-pack[4:6] 此包为该文件的第几个包   最大值512
-pack[6:8] 此文件一共有多少包      最大值512
-pack[8:len(pack)-6] 数据正文
-pack[len(pack)-6:] 结束标识符     0x00 / 0x01
+//var pack []byte
+//
+//pack[0] 文件类型
+//pack[1:5] 此包数据正文长度        最大值 8 << 20
+//pack[5:7] 此包为该文件的第几个包   最大值512
+//pack[7:9] 此文件一共有多少包      最大值512
+//pack[9:len(pack)-1] 数据正文
+//pack[len(pack)-1] 结束标识符     0x00 / 0x01
 
 服务器：一个8m包， 分数批
     x读取数据，获得此次读取数
@@ -21,3 +21,11 @@ x x x x x    sp.datalen
 x x x x x x  readedlength
 
 x x x x      n
+
+
+client 发送一个包， 接收一个包（接收到的为success，继续循环，否则发送失败）
+
+server 接受一个包（
+    判断类型，
+    case ziparchive：写入文件，如果是最后一部分（currentpart == allpart），下一步处理
+），发送一个包

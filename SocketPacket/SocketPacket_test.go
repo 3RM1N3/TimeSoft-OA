@@ -1,20 +1,16 @@
 package SocketPacket
 
 import (
-	"fmt"
 	"testing"
 )
 
 func TestNewSocketPacket(t *testing.T) {
-	got := NewSocketPacket([]byte{0x00, 0x00, 0xf0, 0xfa})
+	ch := make(chan SocketPacket)
+	got := ""
+	NewJsonPacket(Login, []byte{0x00, 0x00, 0xf0, 0xfa}, ch)
 
 	want := uint16(61690)
-	if got.PacketType != "AA" {
+	if got != "AA" {
 		t.Errorf("expect %v, however %v", want, got)
 	}
-}
-
-func ExampleNewSocketPacket() {
-	got := NewSocketPacket([]byte{0x00, 0x00, 0xf0, 0xfa})
-	fmt.Println(got)
 }
