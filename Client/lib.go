@@ -1,30 +1,18 @@
 package main
 
 import (
-	"archive/zip"
-	"crypto/md5"
+	SP "TimeSoft-OA/SocketPacket"
+	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
+	"log"
+	"net"
 	"os"
-	"path"
-	"path/filepath"
-	"strings"
 )
 
 var (
 	globalName, globalID, globalIPAddr string
 )
-
-type Auth struct {
-	Username string `json:"username"`
-	Pwd      string `json:"password"`
-}
-
-type Response struct {
-	Code string `json:"code"`
-	Msg  string `json:"msg"`
-	ID   string `json:"id"`
-}
 
 type ScanedJob struct {
 	JobID        string `json:"jobid"`
@@ -35,68 +23,75 @@ type ScanedJob struct {
 	UploadTime   int    `json:"uploadtime"`
 }
 
-// CheckMD5 计算md5值
-func CheckMD5(s string) string {
-	b := []byte(s)
-	return fmt.Sprintf("%x", md5.Sum(b))
-}
+// 用户登录
+func Login(conn net.Conn, userName, pwd string) error {
+	pwdMD5 := SP.MD5(pwd)
 
-// Zip 将文件或目录压缩为.zip文件
-func Zip(srcFileOrDir string, destZip string) error {
-	if _, err := os.Stat(destZip); err == nil { // 判断文件存在
-		if err = os.Remove(destZip); err != nil {
-			return err
-		}
+	// 发送登录信息
+	loginJson := SP.LoginJson{
+		User: userName,
+		Pwd:  pwdMD5,
+	}
+	loginJsonData, _ := json.Marshal(loginJson)
+	SP.NewJsonPacket(SP.Login, loginJsonData, sendSPChan)
+
+	// 获取返回信息
+	sp := <-receiveSPChan
+	if sp.TypeByte != SP.Report {
+		return errors.New("返回信息错误")
 	}
 
-	zipfile, err := os.Create(destZip)
+	reportJson := SP.ReportJson{}
+	err := json.Unmarshal(sp.Data, &reportJson)
 	if err != nil {
 		return err
 	}
-	defer zipfile.Close()
 
-	srcFileOrDir = strings.ReplaceAll(srcFileOrDir, "\\", "/")
-	parentDir := path.Dir(srcFileOrDir) + "/"
-	archive := zip.NewWriter(zipfile)
-	defer archive.Close()
-
-	filepath.Walk(srcFileOrDir, func(everyFilePath string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-
-		everyFilePath = strings.ReplaceAll(everyFilePath, "\\", "/")
-		header.Name = strings.TrimPrefix(everyFilePath, parentDir)
-
-		if info.IsDir() { // 如果是文件夹
-			header.Name += "/"
-			if _, err := archive.CreateHeader(header); err != nil {
-				return err
-			}
-			return nil
-		}
-
-		// 如果是文件
-		header.Method = zip.Deflate
-		writer, err := archive.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-
-		file, err := os.Open(everyFilePath)
-		if err != nil {
-			return err
-		}
-		defer file.Close()
-
-		_, err = io.Copy(writer, file)
-		return err
-	})
+	if !reportJson.Success {
+		return errors.New(reportJson.Msg)
+	}
 
 	return nil
+}
+
+func UploadFile(fileName string, sendSPChan chan SP.SocketPacket) error {
+	f, err := os.Open(fileName)
+	if err != nil {
+		return err
+	}
+	stat, _ := f.Stat()
+	fmt.Printf("准备发送%d字节，", stat.Size())
+
+	fmt.Println("制作为包传入channel")
+	if err := SP.NewZipPacket(f, sendSPChan); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// 处理收到的包
+func ProcessPacket(receiveSPChan chan SP.SocketPacket) {
+	for {
+		sp := <-receiveSPChan
+		switch sp.TypeByte {
+		case SP.FileUpload:
+			func() {}()
+		}
+	}
+}
+
+// 连接服务器
+func ConnectToServer(address string) (*net.TCPConn, error) {
+	tcpAddr, _ := net.ResolveTCPAddr("tcp4", address)
+
+	conn, err := net.DialTCP("tcp", nil, tcpAddr) // 创建连接
+	if err != nil {
+		log.Println("拨号失败", err)
+		return nil, err
+	}
+
+	conn.SetKeepAlive(true) // 发送心跳包维持连接
+
+	return conn, nil
 }
