@@ -62,7 +62,7 @@ func process(conn net.Conn) {
 // 处理收到的包
 func ProcessPacket(conn net.Conn, sendSPChan, receiveSPChan chan SP.SocketPacket) {
 	fileName := ""
-	realName := ""
+	userRealName := ""
 	var fileSize, writeSize int64
 
 	for {
@@ -83,7 +83,7 @@ func ProcessPacket(conn net.Conn, sendSPChan, receiveSPChan chan SP.SocketPacket
 			// 从数据库查询对应密码
 			row := db.QueryRow(`SELECT PWD, REALNAME FROM USER WHERE USERNAME = ?`, loginJson.User)
 			truePwd := ""
-			err = row.Scan(&truePwd, &realName)
+			err = row.Scan(&truePwd, &userRealName)
 			if err != nil {
 				log.Println("从数据库查询失败", err)
 				SP.ReportSuccess(false, "从数据库查询失败", sendSPChan)
@@ -98,33 +98,35 @@ func ProcessPacket(conn net.Conn, sendSPChan, receiveSPChan chan SP.SocketPacket
 				return
 			}
 
+			log.Printf("%s 登录成功\n", conn.RemoteAddr().String())
 			SP.ReportSuccess(true, "", sendSPChan)
 
 		// 客户端上传文件信息至服务器
 		case SP.FileUpload:
-			if realName == "" {
-				log.Println("用户未登录")
+			if userRealName == "" {
+				log.Println("用户未登录，但尝试上传文件")
 				continue
 			}
 			fileUploadJson := SP.FileUploadJson{}
 			json.Unmarshal(sp.Data, &fileUploadJson)
 			fileName = fileUploadJson.FileName
 			fileSize = fileUploadJson.FileSize
+			fmt.Printf("\n收到文件%s，大小%d\n", fileName, fileSize)
 			writeSize = 0
 
 		// 保存文件
 		case SP.ZipArchive:
-			if realName == "" {
-				log.Println("用户未登录")
+			if userRealName == "" {
 				continue
 			}
 
 			// 在本地创建文件
-			fmt.Printf("\n***此次为文件 %s 的第%d部分***\n", fileName, sp.CurrentPart)
+			fmt.Printf("\n***此次写入文件 %s 的第%d部分***\n", fileName, sp.CurrentPart)
 			f, err := os.OpenFile(fileName, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0755)
 			if err != nil {
 				log.Println("文件打开失败", err)
-				continue
+				//continue
+				return
 			}
 
 			n, err := f.Write(sp.Data) // 写入文件
