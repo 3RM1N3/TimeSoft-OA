@@ -15,17 +15,16 @@ type SocketPacket struct {
 	CurrentPart uint16
 	AllPart     uint16
 	Data        []byte
-	EndByte     PacketEndByte
 }
 
 // 显示此SocketPacket
 func (sp *SocketPacket) String() string {
-	return fmt.Sprintf("Type: SocketPacket\n    PacketType:  %X,\n    DataLen:     %d,\n    CurrentPart: %d,\n    AllPart:     %d,\n    Data:        []byte{...},\n    EndByte:     %X,",
+	return fmt.Sprintf("Type: SocketPacket\n    PacketType:  %X,\n    DataLen:     %d,\n    CurrentPart: %d,\n    AllPart:     %d,\n    Data:        []byte{...}",
 		sp.TypeByte,
 		sp.DataLen,
 		sp.CurrentPart,
 		sp.AllPart,
-		sp.EndByte)
+	)
 }
 
 // 将SocketPacket内容打包为字节切片。格式：
@@ -75,19 +74,13 @@ func (sp *SocketPacket) Pack() ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = buf.WriteByte(byte(sp.EndByte))
-	if err != nil {
-		return nil, err
-	}
 
-	// 补齐8388608个字节
-	standardLen := 8388608
-	difference := standardLen - buf.Len()
+	difference := packageSize - buf.Len() // 补齐packageSize个字节
 
-	if difference < 0 {
-		return nil, err
+	if difference < 0 { // 如果长度大于一个包，返回错误
+		return nil, errors.New("传入数据过长")
 
-	} else if difference > 0 {
+	} else if difference > 0 { // 如果长度不够一个包则补齐
 		buf.Write(make([]byte, difference))
 	}
 
@@ -95,31 +88,28 @@ func (sp *SocketPacket) Pack() ([]byte, error) {
 }
 
 // 从字节缓冲区读取包数据
-func (sp *SocketPacket) ReadPack(b []byte) error {
-	if len(b) < 9 {
-		return errors.New("[]byte is too short")
-	}
-
-	sp.TypeByte = PacketType(b[0])
-
+func (sp *SocketPacket) ReadPack(b *[]byte) error {
 	var err error
-	sp.DataLen, err = ByteToUint32(b[1:5])
+
+	sp.TypeByte = PacketType((*b)[0]) // 获取类型
+
+	sp.DataLen, err = ByteToUint32((*b)[1:5]) // 获取数据长度
 	if err != nil {
 		return err
 	}
 
-	sp.CurrentPart, err = ByteToUint16(b[5:7])
+	sp.CurrentPart, err = ByteToUint16((*b)[5:7]) // 获取当前包索引
 	if err != nil {
 		return err
 	}
 
-	sp.AllPart, err = ByteToUint16(b[7:9])
+	sp.AllPart, err = ByteToUint16((*b)[7:9]) // 获取全部包数量
 	if err != nil {
 		return err
 	}
 
-	sp.Data = b[9 : 9+sp.DataLen]
-	sp.EndByte = PacketEndByte(b[9+sp.DataLen])
+	sp.Data = (*b)[9 : 9+int(sp.DataLen)] // 获取正文数据
+	(*b) = (*b)[packageSize:]             // 丢弃空白部分
 
 	return nil
 }
@@ -132,7 +122,6 @@ func NewJsonPacket(t PacketType, b []byte, out chan SocketPacket) {
 		CurrentPart: 1,
 		AllPart:     1,
 		Data:        b,
-		EndByte:     OverEnd,
 	}
 }
 
@@ -146,7 +135,7 @@ func NewZipPacket(f *os.File, out chan SocketPacket) error {
 	}
 
 	zipSize := stat.Size()
-	allPart := math.Ceil(float64(zipSize) / 8388598)
+	allPart := math.Ceil(float64(zipSize) / packageSize)
 
 	fileJson := FileUploadJson{
 		FileName: stat.Name(),
@@ -158,77 +147,28 @@ func NewZipPacket(f *os.File, out chan SocketPacket) error {
 		return err
 	}
 
-	out <- SocketPacket{
+	out <- SocketPacket{ // 传入上传文件json数据
 		TypeByte:    FileUpload,
 		DataLen:     uint32(len(encodedFileJson)),
 		CurrentPart: 0,
 		AllPart:     uint16(allPart),
 		Data:        encodedFileJson,
-		EndByte:     NotOverEnd,
 	}
 
-	endByte := NotOverEnd
-
 	for i := 0; i < int(allPart); i++ {
-		buf := make([]byte, 8388598)
+		buf := make([]byte, packageSize-9)
 		n, err := f.Read(buf)
 		if err != nil {
 			return err
 		}
 
-		if i == int(allPart)-1 {
-			endByte = OverEnd
-		}
-
-		out <- SocketPacket{
+		out <- SocketPacket{ // 循环传送文件包
 			TypeByte:    ZipArchive,
 			DataLen:     uint32(n),
 			CurrentPart: uint16(i) + 1,
 			AllPart:     uint16(allPart),
 			Data:        buf[:n],
-			EndByte:     endByte,
 		}
-	}
-	return nil
-}
-
-// 从in读取包，合并为分开前的文件写入磁盘，返回*os.File
-//
-// 注意：应仅当SocketPacket.TypeByte == FileUpload时使用此方法保存文件
-func (sp *SocketPacket) SplicingFile(spIn chan SocketPacket) error {
-	if sp.TypeByte != FileUpload {
-		return errors.New("not a file upload json")
-	}
-
-	thisFile := FileUploadJson{}
-	if err := json.Unmarshal(sp.Data, &thisFile); err != nil {
-		return err
-	}
-
-	f, err := os.Create(thisFile.FileName)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	sumByte := 0
-	for i := 0; i < int(sp.AllPart); i++ {
-		spFile := <-spIn
-		if spFile.TypeByte != ZipArchive || spFile.CurrentPart != uint16(i)+1 {
-			return errors.New("file receive abort")
-		}
-		//fmt.Printf("\n此包内容：\n%v\n", spFile.Data)
-		n, err := f.Write(spFile.Data)
-		if err != nil {
-			return err
-		}
-		sumByte += n
-		fmt.Printf("写入了%d字节\n", sumByte)
-		err = f.Sync()
-		if err != nil {
-			return err
-		}
-		fmt.Printf("文件第%d部分写入成功\n", i+1)
 	}
 	return nil
 }

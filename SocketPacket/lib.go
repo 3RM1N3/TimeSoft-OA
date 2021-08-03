@@ -21,7 +21,6 @@ import (
 )
 
 type PacketType byte
-type PacketEndByte byte
 
 // 发送文件前json
 type FileUploadJson struct {
@@ -37,8 +36,15 @@ type ReportJson struct {
 
 // 用户名密码登录json
 type LoginJson struct {
-	User string
-	Pwd  string
+	PhoneNumber string
+	Pwd         string
+}
+
+// 注册账号json
+type SignUpJson struct {
+	PhoneNumber string
+	Pwd         string
+	RealName    string
 }
 
 const (
@@ -46,16 +52,14 @@ const (
 	Report                        // 汇报，用于汇报数据接受情况
 	FileUpload                    // 上传文件之前的汇报
 	FileRequest                   // 请求下载文件
-	Login                         // 用于登录
 	Notice                        // 用于通知
 	PullList                      // 客户端请求获得数据表
 	PushList                      // 服务端用于推送表
+	Login                         // 用于登录
+	Signup                        // 用于注册新账号
 )
 
-const (
-	NotOverEnd PacketEndByte = iota // 此包结束但文件未结束
-	OverEnd                         // 此包结束且文件已结束
-)
+const packageSize = 4194304
 
 func Uint16ToByte(i uint16) ([]byte, error) {
 	buf := new(bytes.Buffer)
@@ -230,7 +234,7 @@ func Send(conn net.Conn, sendSPChan chan SocketPacket) error {
 			return err
 		}
 
-		if n != 8388608 {
+		if n != packageSize {
 			log.Println("包发送错误")
 			return errors.New("包发送错误")
 		}
@@ -239,11 +243,13 @@ func Send(conn net.Conn, sendSPChan chan SocketPacket) error {
 
 // 接收数据
 func Receive(conn net.Conn, receivedSPChan chan SocketPacket) {
+
+	fmt.Printf("\n等待%s发送信息...\n", conn.RemoteAddr().String())
+
+	buff := []byte{}
 	for {
 		var sp SocketPacket
-		buf := make([]byte, 8388608) // 创建一个新切片， 用作保存数据的缓冲区
-
-		fmt.Printf("\n等待%s发送信息...\n", conn.RemoteAddr().String())
+		buf := make([]byte, packageSize) // 创建一个新切片， 用作保存数据的缓冲区
 
 		n, err := conn.Read(buf) // 读取数据，无则阻塞
 		if err != nil {
@@ -251,18 +257,20 @@ func Receive(conn net.Conn, receivedSPChan chan SocketPacket) {
 			return
 		}
 
-		if n != 8388608 {
-			fmt.Printf("%s 此次读取错误，抛弃此包进行下一次读取\n", conn.RemoteAddr().String())
+		buff = append(buff, buf[:n]...)
+
+		if len(buff) < packageSize {
+			//fmt.Printf("%s 数据包不完整，准备拼接下一次读取\n", conn.RemoteAddr().String())
 			continue
 		}
 
 		fmt.Printf("%s 包大小正确，判断数据头\n", conn.RemoteAddr().String())
-		err = sp.ReadPack(buf) // 生成sp
+		err = sp.ReadPack(&buff) // 生成sp
 		if err != nil {
 			log.Printf("制作SocketPacket错误，抛弃此包进行下一次读取 %v\n", err)
 			continue
 		}
-		fmt.Printf("收到 %s 的消息:\n%s\n", conn.RemoteAddr().String(), sp.String())
+		//fmt.Printf("收到 %s 的消息:\n%s\n", conn.RemoteAddr().String(), sp.String())
 
 		receivedSPChan <- sp // 传出数据
 	}

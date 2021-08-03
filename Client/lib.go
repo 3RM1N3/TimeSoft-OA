@@ -8,11 +8,14 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 )
 
 var (
 	globalName, globalID, globalIPAddr string
+	conn                               *net.TCPConn
 )
+var loginSuccess = make(chan bool, 1)
 
 type ScanedJob struct {
 	JobID        string `json:"jobid"`
@@ -23,40 +26,114 @@ type ScanedJob struct {
 	UploadTime   int    `json:"uploadtime"`
 }
 
-// 用户登录
-func Login(conn net.Conn, userName, pwd string) error {
-	pwdMD5 := SP.MD5(pwd)
-
-	// 发送登录信息
-	loginJson := SP.LoginJson{
-		User: userName,
-		Pwd:  pwdMD5,
-	}
-	loginJsonData, _ := json.Marshal(loginJson)
-	SP.NewJsonPacket(SP.Login, loginJsonData, sendSPChan)
-
-	// 获取返回信息
-	sp := <-receiveSPChan
-	if sp.TypeByte != SP.Report {
-		return errors.New("返回信息错误")
-	}
-
-	reportJson := SP.ReportJson{}
-	err := json.Unmarshal(sp.Data, &reportJson)
+// 注册账号
+func SignUpAccount(address string, signupJson SP.SignUpJson) error {
+	// 创建连接
+	udpAddr, err := net.ResolveUDPAddr("udp", address)
 	if err != nil {
+		log.Println("读取地址失败")
+		return err
+	}
+	conn, err := net.DialUDP("udp4", nil, udpAddr)
+	if err != nil {
+		log.Println("连接失败")
+		return err
+	}
+	defer conn.Close()
+
+	// 发送数据
+	signupData, _ := json.Marshal(signupJson)
+	signupData = append([]byte{byte(SP.Signup)}, signupData...)
+	n, err := conn.Write(signupData)
+	if err != nil || n == 0 {
+		fmt.Println("发送数据失败")
 		return err
 	}
 
-	if !reportJson.Success {
-		return errors.New(reportJson.Msg)
+	// 接收数据
+	data := make([]byte, 1024)
+	n, _, err = conn.ReadFromUDP(data)
+	if err != nil || n < 2 {
+		fmt.Println("读取数据失败")
+		return err
+	}
+
+	var report SP.ReportJson
+	err = json.Unmarshal(data[:n], &report)
+	if err != nil {
+		log.Println("读取服务器消息失败")
+		return err
+	}
+
+	// 处理数据
+	if !report.Success {
+		log.Println("注册失败")
+		return errors.New(report.Msg)
 	}
 
 	return nil
 }
 
+// 用户登录
+func Login(address string, loginJson SP.LoginJson) error {
+	// 创建连接
+	udpAddr, err := net.ResolveUDPAddr("udp", address)
+	if err != nil {
+		log.Println("读取地址失败", err)
+		return err
+	}
+	udpConn, err := net.DialUDP("udp4", nil, udpAddr)
+	if err != nil {
+		log.Println("连接失败", err)
+		return err
+	}
+	defer udpConn.Close()
+
+	// 发送数据
+	loginData, _ := json.Marshal(loginJson)
+	loginData = append([]byte{byte(SP.Login)}, loginData...)
+	n, err := udpConn.Write(loginData)
+	if err != nil || n == 0 {
+		fmt.Println("发送数据失败", err)
+		return err
+	}
+
+	// 接收数据
+	data := make([]byte, 1024)
+	n, _, err = udpConn.ReadFromUDP(data)
+	if err != nil || n < 2 {
+		fmt.Println("读取数据失败", err)
+		return err
+	}
+
+	var report SP.ReportJson
+	err = json.Unmarshal(data[:n], &report)
+	if err != nil {
+		log.Println("读取服务器消息失败", err)
+		return err
+	}
+
+	// 处理数据
+	if !report.Success {
+		log.Printf("登录失败：%s\n", report.Msg)
+		return errors.New(report.Msg)
+	}
+
+	conn, err = ConnectToServer(strings.Replace(address, "8080", "8888", 1)) // 登录至服务器
+	if err != nil {
+		log.Printf("登录失败")
+		return err
+	}
+	loginSuccess <- true
+	close(loginSuccess)
+	return nil
+}
+
+// 上传文件
 func UploadFile(fileName string, sendSPChan chan SP.SocketPacket) error {
 	f, err := os.Open(fileName)
 	if err != nil {
+		log.Println("文件打开失败")
 		return err
 	}
 	stat, _ := f.Stat()
@@ -64,6 +141,7 @@ func UploadFile(fileName string, sendSPChan chan SP.SocketPacket) error {
 
 	fmt.Println("制作为包传入channel")
 	if err := SP.NewZipPacket(f, sendSPChan); err != nil {
+		log.Println("文件打包失败")
 		return err
 	}
 
@@ -87,7 +165,7 @@ func ConnectToServer(address string) (*net.TCPConn, error) {
 
 	conn, err := net.DialTCP("tcp", nil, tcpAddr) // 创建连接
 	if err != nil {
-		log.Println("拨号失败", err)
+		log.Println("拨号失败")
 		return nil, err
 	}
 

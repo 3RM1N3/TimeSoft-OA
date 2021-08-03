@@ -22,10 +22,3 @@ x x x x x x  readedlength
 
 x x x x      n
 
-
-client 发送一个包， 接收一个包（接收到的为success，继续循环，否则发送失败）
-
-server 接受一个包（
-    判断类型，
-    case ziparchive：写入文件，如果是最后一部分（currentpart == allpart），下一步处理
-），发送一个包
