@@ -1,18 +1,60 @@
 package main
 
 import (
-	SP "TimeSoft-OA/SocketPacket"
 	"testing"
 )
 
-func TestByteToUint16(t *testing.T) {
-	got, err := SP.ByteToUint16([]byte{0x00, 0x00, 0xf0, 0xfa})
+func TestGetUnreviewUser(t *testing.T) {
+	want := [][2]string{
+		{"15146209355", "李晓"},
+		{"18512341234", "李雷"},
+	}
+
+	got := [][2]string{}
+	err := GetUnreviewUser(&got)
 	if err != nil {
-		t.Errorf("转换失败: %v", err)
+		t.Errorf("获取未审核列表失败: %v", err)
 		return
 	}
-	want := uint16(61690)
-	if got != want {
-		t.Errorf("expect %v, however %v", want, got)
+
+	if len(got) != len(want) {
+		t.Errorf("期待长度 %d, 实际长度 %d\n", len(want), len(got))
+	}
+
+	for _, v := range want {
+		bool := false
+		for _, w := range got {
+			if v == w {
+				bool = true
+			}
+		}
+		if !bool {
+			t.Errorf("结果中未包含该值 %s\n", v)
+		}
+	}
+}
+
+func TestAllPass(t *testing.T) {
+	err := AllPass()
+	if err != nil {
+		t.Errorf("通过失败: %v", err)
+	}
+}
+
+func TestPartPass(t *testing.T) {
+	unreviewedList := [][2]string{
+		{"13311674417", "qwer"},
+		{"15146209355", "gerfrgv"},
+	}
+	err := PartPass(&unreviewedList, &[]int{0})
+	if err != nil {
+		t.Errorf("通过失败: %v", err)
+	}
+}
+
+func TestResetPwd(t *testing.T) {
+	err := ResetPwd("13311674417", "admin")
+	if err != nil {
+		t.Errorf("通过失败: %v", err)
 	}
 }
