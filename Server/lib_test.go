@@ -4,6 +4,7 @@ import (
 	"testing"
 )
 
+// 测试获取未审核用户
 func TestGetUnreviewUser(t *testing.T) {
 	want := [][2]string{
 		{"15146209355", "李晓"},
@@ -34,6 +35,7 @@ func TestGetUnreviewUser(t *testing.T) {
 	}
 }
 
+// 测试全部员工通过注册
 func TestAllPass(t *testing.T) {
 	err := AllPass()
 	if err != nil {
@@ -41,6 +43,7 @@ func TestAllPass(t *testing.T) {
 	}
 }
 
+// 测试部分员工通过注册
 func TestPartPass(t *testing.T) {
 	unreviewedList := [][2]string{
 		{"13311674417", "qwer"},
@@ -52,6 +55,7 @@ func TestPartPass(t *testing.T) {
 	}
 }
 
+// 测试重置密码
 func TestResetPwd(t *testing.T) {
 	err := ResetPwd("13311674417", "admin")
 	if err != nil {
