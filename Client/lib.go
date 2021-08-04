@@ -5,16 +5,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net"
 	"os"
+	"path"
+	"path/filepath"
+	"sort"
 	"strings"
 )
 
-var (
-	globalName, globalID, globalIPAddr string
-	conn                               *net.TCPConn
-)
+var conn *net.TCPConn
 var loginSuccess = make(chan bool, 1)
 
 type ScanedJob struct {
@@ -172,4 +173,102 @@ func ConnectToServer(address string) (*net.TCPConn, error) {
 	conn.SetKeepAlive(true) // 发送心跳包维持连接
 
 	return conn, nil
+}
+
+// 设置项目文件夹
+func SetProjectDir(dirPath string) error {
+	dirEntryList, err := os.ReadDir(dirPath)
+	if err != nil {
+		log.Println("读取目标文件夹失败")
+		return err
+	}
+	if len(dirEntryList) == 0 { // 空文件夹能够直接使用
+		return nil
+	}
+
+	// 验证.verf文件
+	if r, err := CheckVerf(dirPath); err != nil {
+		return err
+	} else if !r {
+		return errors.New("文件夹校验失败，请选择曾用的项目文件夹或空文件夹")
+	}
+
+	return nil
+}
+
+// 校验.verf文件
+func CheckVerf(dirPath string) (bool, error) {
+	verfPath := path.Join(dirPath, ".verf")
+	f, err := os.Open(verfPath)
+	if err != nil {
+		log.Println("校验文件打开失败")
+		return false, err
+	}
+
+	b := make([]byte, 40)
+	_, err = f.Read(b)
+	if err != nil {
+		return false, err
+	}
+	wantVerfStr := string(b)
+	gotVerfStr, err := GenVerf(dirPath)
+	if err != nil {
+		log.Println("生成校验码失败")
+		return false, err
+	}
+	if gotVerfStr != wantVerfStr {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// 生成.verf校验字符串
+func GenVerf(dirPath string) (string, error) {
+	pathList := []string{}
+
+	err := filepath.Walk(dirPath, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.Name() == ".verf" {
+			return nil
+		}
+
+		pathList = append(pathList, strings.TrimPrefix(path, dirPath))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+
+	macs, err := GetMacAddrs()
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(macs)
+
+	sort.Strings(pathList)
+	got := "!g*657#JW@$" + macs[0] + strings.Join(pathList, "")
+
+	return "verify!#" + SP.MD5(got), nil
+}
+
+// 获取本机MAC地址
+func GetMacAddrs() ([]string, error) {
+	macAddrs := []string{}
+
+	netInterfaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, netInterface := range netInterfaces {
+		macAddr := netInterface.HardwareAddr.String()
+		if macAddr != "" {
+			macAddrs = append(macAddrs, macAddr)
+		}
+	}
+	return macAddrs, nil
 }
