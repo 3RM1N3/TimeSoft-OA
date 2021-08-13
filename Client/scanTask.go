@@ -2,10 +2,12 @@ package main
 
 import (
 	"TimeSoft-OA/lib"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io/fs"
 	"log"
+	"net"
 	"os"
 	"path"
 	"path/filepath"
@@ -14,6 +16,26 @@ import (
 )
 
 var ErrScanTooFast = errors.New("你的扫描速度似乎有些快于常人，为判定是否作弊，请主动与管理员取得联系。")
+
+// 获取当前已有客户
+func GetClientCo() ([]string, error) {
+	b, err := sendUDPMsg(globalServerAddr, lib.ClientCo, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(b) == 1 {
+		return nil, lib.ReportCode(b[0]).ToError()
+	}
+
+	clientCos := []string{}
+	err = json.Unmarshal(b, &clientCos)
+	if err != nil {
+		return nil, err
+	}
+
+	return clientCos, nil
+}
 
 // 设置项目文件夹
 func SetProjectDir(dirPath string) error {
@@ -99,7 +121,8 @@ func GenVerf(dirPath string, fileNum int) (string, error) {
 	return "verify!#" + lib.MD5(got), nil
 }
 
-// 监测项目文件夹
+// 监测项目文件夹，increaseCh可以传出增长的文件数，errCh传出错误，
+// scanOver设置为true时扫描结束
 func DirWatcher(dirPath string, increaseCh chan int, errCh chan error, scanOver *bool) {
 
 	firstWatch := true
@@ -174,9 +197,48 @@ func DirWatcher(dirPath string, increaseCh chan int, errCh chan error, scanOver 
 	}
 }
 
-// 获取当前已有客户
-func GetClientCo() []string {
-	//clientCo := []string{}
-	//sp := <-receivelibChan
+// 扫描结束，打包文件夹并提交，dirPath为要提交的文件夹，scanOver设置结束监测文件夹
+func ScanOverPackSubmit(dirPath, clientCo, uploader string, scanOrEdit byte, scanOver *bool) error {
+	*scanOver = true // 结束监测
+
+	tempFile := ".temp_archive" + uploader
+	err := lib.Zip(dirPath, tempFile)
+	if err != nil {
+		return err
+	}
+
+	conn, err := net.Dial("tcp", globalServerAddr+globalTCPPort)
+	if err != nil {
+		return err
+	}
+	fmt.Println("与服务器连接成功，发送文件")
+
+	err = lib.SendFile(tempFile, clientCo, uploader, scanOrEdit, conn)
+	if err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// 获取今日工作量
+func TodayWorkload() (lib.WorkLoadJson, error) {
+	var todayWorkload = lib.WorkLoadJson{
+		Phone: globalPhone,
+	}
+	b, err := sendUDPMsg(globalServerAddr, lib.WorkLoad, todayWorkload)
+	if err != nil {
+		return todayWorkload, err
+	}
+
+	if len(b) == 1 {
+		return todayWorkload, lib.ReportCode(b[0]).ToError()
+	}
+
+	err = json.Unmarshal(b, &todayWorkload)
+	if err != nil {
+		return todayWorkload, err
+	}
+
+	return todayWorkload, nil
 }

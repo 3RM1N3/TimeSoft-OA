@@ -61,28 +61,34 @@ func ByteToUint32(b []byte) (uint32, error) {
 	return i, nil
 }
 
-// Zip 将文件或目录压缩为.zip文件
-func Zip(srcFileOrDir, destZip string) error {
+// Zip 将目录下的内容压缩为.zip文件
+func Zip(srcDir, destZip string) error {
+	srcDir = filepath.Clean(srcDir)
+
 	if _, err := os.Stat(destZip); err == nil { // 判断文件存在
-		if err = os.Remove(destZip); err != nil {
+		if err = os.Remove(destZip); err != nil { // 不存在则移除
 			return err
 		}
 	}
 
-	zipfile, err := os.Create(destZip)
+	zipfile, err := os.Create(destZip) // 创建压缩文件
 	if err != nil {
 		return err
 	}
-	defer zipfile.Close()
+	defer zipfile.Close() // 函数返回后关闭文件
 
-	srcFileOrDir = strings.ReplaceAll(srcFileOrDir, "\\", "/")
-	parentDir := path.Dir(srcFileOrDir) + "/"
+	srcDir = strings.ReplaceAll(srcDir, "\\", "/") // 将windows路径中的反斜杠替换成斜杠
+	parentDir := srcDir + "/"                      // 获取全部上级文件夹
 	archive := zip.NewWriter(zipfile)
 	defer archive.Close()
 
-	filepath.Walk(srcFileOrDir, func(everyFilePath string, info os.FileInfo, err error) error {
+	err = filepath.Walk(srcDir, func(everyFilePath string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+
+		if info.IsDir() && everyFilePath == srcDir {
+			return nil
 		}
 
 		header, err := zip.FileInfoHeader(info)
@@ -92,12 +98,13 @@ func Zip(srcFileOrDir, destZip string) error {
 
 		everyFilePath = strings.ReplaceAll(everyFilePath, "\\", "/")
 		header.Name = strings.TrimPrefix(everyFilePath, parentDir)
+		log.Println(header.Name)
 
 		if info.IsDir() { // 如果是文件夹
-			header.Name += "/"
-			if _, err := archive.CreateHeader(header); err != nil {
-				return err
-			}
+			// header.Name += "/"
+			// if _, err := archive.CreateHeader(header); err != nil { // 创建header
+			// 	return err
+			// }
 			return nil
 		}
 
@@ -117,61 +124,67 @@ func Zip(srcFileOrDir, destZip string) error {
 		_, err = io.Copy(writer, file)
 		return err
 	})
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
 // Unzip 将.zip文件解压至目录，如果目录不存在则自动创建
-func Unzip(srcZip, destDir string) error {
-	// Open a zip archive for reading.
-	r, err := zip.OpenReader(srcZip)
-	if err != nil {
-		return err
-	}
-	defer r.Close()
+func Unzip(srcZip, destDir string) ([]string, error) {
+	destDir = path.Clean(destDir) // 整理目录字符串
+	fileIDList := []string{}      // 初始化档号列表
 
-	err = os.MkdirAll(destDir, 0644)
+	r, err := zip.OpenReader(srcZip) // 打开源文件
 	if err != nil {
-		log.Println("创建目标文件夹失败", err)
-		return err
+		return nil, err
 	}
+	defer r.Close() // 函数返回后关闭源文件
 
-	// Iterate through the files in the archive,
-	// printing some of their contents.
+	// 逐个枚举压缩文档内的文件
 	for _, f := range r.File {
-		pathInArchive, _ := GbkToUtf8([]byte(f.Name))
-		fullPath := path.Join(destDir, pathInArchive)
-		dir := path.Dir(pathInArchive)
-		if dir != "." {
-			err := os.MkdirAll(path.Join(destDir, dir), 0644)
+		pathInArchive, err := GbkToUtf8([]byte(f.Name)) // 获取压缩包内的文件路径
+		if err != nil {
+			return nil, err
+		}
+
+		fullPath := path.Join(destDir, pathInArchive) // 生成完整路径
+		ParentDir := path.Dir(fullPath)               // 获取上级目录
+
+		if path.Dir(ParentDir) == destDir {
+			fileIDList = append(fileIDList, path.Base(ParentDir)) // 插入档号列表
+		}
+
+		if ParentDir != "." {
+			err := os.MkdirAll(ParentDir, 0666) // 创建全部上级目录
 			if err != nil {
-				log.Println("创建包内文件夹结构失败", err)
-				continue
+				return nil, err
 			}
 		}
-		fmt.Printf("Contents of %s:\n", pathInArchive)
+		// fmt.Printf("得到 %s\n", pathInArchive)
 		rc, err := f.Open()
 		if err != nil {
 			log.Printf("包内文件%s读取失败 %v\n", pathInArchive, err)
 			continue
 		}
-		destFile, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE, 0755)
+		destFile, err := os.OpenFile(fullPath, os.O_WRONLY|os.O_CREATE, 0755) // 创建目标文件
 		if err != nil {
 			log.Printf("创建本地文件%s失败 %v\n", fullPath, err)
 			continue
 		}
-		_, err = io.Copy(destFile, rc)
+		_, err = io.Copy(destFile, rc) // 复制文件
 		if err != nil {
 			log.Printf("包内文件%s解压失败 %v\n", pathInArchive, err)
 			continue
 		}
 		destFile.Close()
 		rc.Close()
-		fmt.Print("\n\n")
 	}
-	return nil
+	return fileIDList, nil
 }
 
+// 将gbk编码的字符串转码为utf-8
 func GbkToUtf8(s []byte) (string, error) {
 	reader := transform.NewReader(bytes.NewReader(s), simplifiedchinese.GBK.NewDecoder())
 	d, e := io.ReadAll(reader)

@@ -3,12 +3,15 @@ package main
 import (
 	"TimeSoft-OA/lib"
 	"database/sql"
+	"io/fs"
 	"log"
+	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
 var db *sql.DB
+var ProjectPath = "."
 
 // 获取未审核员工信息
 func GetUnreviewUser(unreviewedUserList *[][2]string) error {
@@ -90,4 +93,25 @@ func ResetPwd(phone, newPwd string) error {
 	}
 
 	return nil
+}
+
+// 获取文件夹内文件数
+func getSubFileNum(path string) (int, error) {
+	num := 0
+
+	err := filepath.Walk(path, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if info.IsDir() {
+			return nil
+		}
+
+		num++
+
+		return nil
+	})
+
+	return num, err
 }

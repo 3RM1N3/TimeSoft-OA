@@ -18,7 +18,7 @@ func init() {
 func main() {
 	defer db.Close()
 
-	go SignupAndLogin() // 开启用于注册和登录的UDP服务器
+	go UDPServer(":8080") // 开启用于注册和登录的UDP服务器
 
 	err := TCPServer(":8888") // 开启收发文件的TCP服务器
 	if err != nil {

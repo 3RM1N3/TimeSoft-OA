@@ -15,6 +15,7 @@ const (
 	Login                         // 用于登录
 	Signup                        // 用于注册新账号
 	ClientCo                      // 用于获取现有的客户公司
+	WorkLoad                      // 用于获取今日工作量
 )
 
 const (

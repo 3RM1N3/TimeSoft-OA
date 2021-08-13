@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net"
 	"os"
@@ -12,9 +13,11 @@ import (
 
 // 上传文件的请求头
 type FileSendHead struct {
-	Name     string
-	Uploader string
-	Size     int64
+	Name       string
+	Uploader   string
+	ClientCo   string
+	Size       int64
+	ScanOrEdit byte // 0为扫描1为修图
 }
 
 // 下载文件的请求头
@@ -48,7 +51,7 @@ func MakeHead(SRType PacketType, some interface{}) ([]byte, error) {
 }
 
 // 发送文件至远端
-func SendFile(fileName string, conn net.Conn) error {
+func SendFile(fileName, clientCo, uploader string, scanOrEdit byte, conn net.Conn) error {
 	fmt.Println("准备发送文件", fileName)
 	defer conn.Close()
 
@@ -65,10 +68,13 @@ func SendFile(fileName string, conn net.Conn) error {
 	defer f.Close()
 
 	uploadHead := FileSendHead{
-		Name:     fileName,
-		Size:     state.Size(),
-		Uploader: "13284030601",
+		Name:       fileName,
+		Size:       state.Size(),
+		Uploader:   uploader,
+		ClientCo:   clientCo,
+		ScanOrEdit: scanOrEdit,
 	}
+
 	fileHead, err := uploadHead.MakeHead()
 	if err != nil {
 		return err
@@ -82,7 +88,7 @@ func SendFile(fileName string, conn net.Conn) error {
 
 	result := make([]byte, 1)
 	conn.Read(result)
-	if result[0] != '1' {
+	if result[0] != byte(Success) {
 		return errors.New("远端接收文件时出现错误")
 	}
 	fmt.Println("可以发送正文")
@@ -109,8 +115,8 @@ func SendFile(fileName string, conn net.Conn) error {
 			return err
 		}
 
-		if result[0] != '1' {
-			return errors.New("服务器拒绝接收文件")
+		if result[0] != byte(Success) {
+			return errors.New("远端接收文件时出现错误")
 		}
 
 		i++
@@ -120,8 +126,9 @@ func SendFile(fileName string, conn net.Conn) error {
 	return nil
 }
 
-// 从远端接收文件，返回本地文件名，文件指针和错误
-func ReceiveFile(conn net.Conn) (string, *os.File, error) {
+// 从远端接收文件，返回文件头json和错误
+func ReceiveFile(conn net.Conn) (FileSendHead, error) {
+	log.Println("接收文件")
 	var f *os.File
 	var head FileSendHead
 	writtenSize := 0
@@ -132,7 +139,12 @@ func ReceiveFile(conn net.Conn) (string, *os.File, error) {
 		b := make([]byte, 524288)
 		n, err := conn.Read(b)
 		if err != nil {
-			return "", nil, err
+			return head, err
+		}
+
+		if n == 0 {
+			log.Println("此次没有读到数据")
+			continue
 		}
 
 		buf = append(buf, b[:n]...)
@@ -143,7 +155,7 @@ func ReceiveFile(conn net.Conn) (string, *os.File, error) {
 		if headSize == 0 {
 			headSize, err = ByteToUint16(buf[:2])
 			if err != nil {
-				return "", nil, err
+				return head, err
 			}
 			buf = buf[2:]
 		}
@@ -157,19 +169,19 @@ func ReceiveFile(conn net.Conn) (string, *os.File, error) {
 			fmt.Printf("读取的%d，实际json文件%d字节\n", headSize, len(buf[:headSize]))
 			err := json.Unmarshal(buf[:headSize], &head)
 			if err != nil {
-				conn.Write([]byte{'0'})
-				return "", nil, err
+				conn.Write([]byte{byte(Failed)})
+				return head, err
 			}
 			// 创建本地文件
 			f, err = os.OpenFile(head.Name, os.O_CREATE|os.O_RDWR, 0755)
 			if err != nil {
-				conn.Write([]byte{'0'})
-				return "", nil, err
+				conn.Write([]byte{byte(Failed)})
+				return head, err
 			}
-			// defer f.Close()
+			defer f.Close()
 			fmt.Println("创建本地文件成功")
 
-			conn.Write([]byte{'1'}) // 告知对方接收成功
+			conn.Write([]byte{byte(Success)}) // 告知对方接收成功
 
 			buf = []byte{}
 			continue
@@ -180,18 +192,19 @@ func ReceiveFile(conn net.Conn) (string, *os.File, error) {
 		// 存储文件
 		n, err = f.Write(buf)
 		if err != nil {
-			return "", nil, err
+			return head, err
 		}
 		writtenSize += n
 		buf = []byte{}
 		fmt.Println("此次写入", n, "字节")
 
 		if writtenSize%8388608 == 0 {
-			conn.Write([]byte{'1'})
+			conn.Write([]byte{byte(Success)})
 			fmt.Println("收到一个包")
 		}
 
 		if writtenSize == int(head.Size) {
+			conn.Write([]byte{byte(Success)})
 			break
 		}
 	}
@@ -201,7 +214,7 @@ func ReceiveFile(conn net.Conn) (string, *os.File, error) {
 	_, err := f.Seek(0, 0)
 	if err != nil {
 		f.Close()
-		return head.Name, nil, err
+		return head, err
 	}
-	return head.Name, f, err
+	return head, err
 }
