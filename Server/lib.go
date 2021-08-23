@@ -2,18 +2,95 @@ package main
 
 import (
 	"TimeSoft-OA/lib"
+	"archive/zip"
 	"database/sql"
+	"io"
 	"io/fs"
 	"log"
+	"os"
 	"path/filepath"
+	"strings"
 
 	_ "github.com/mattn/go-sqlite3"
 )
 
+var (
+	ProjectPath = "."
+	PortUDP = ":8080"
+	PortTCP = ":8888"
+)
 var db *sql.DB
-var ProjectPath = "."
+var UserEditMap = map[string][]string{}
 
-// 获取未审核员工信息
+// ZipDirs 压缩多个目录进一个文件
+func ZipDirs(dirList []string, destZip string) error {
+	log.Println("压缩文件", destZip)
+	if _, err := os.Stat(destZip); err == nil { // 判断文件存在
+		if err = os.Remove(destZip); err != nil { // 存在则移除
+			return err
+		}
+	}
+
+	zipfile, err := os.Create(destZip) // 创建压缩文件
+	if err != nil {
+		return err
+	}
+	defer zipfile.Close() // 函数返回后关闭文件
+	zipWriter := zip.NewWriter(zipfile)
+	defer zipWriter.Close()
+
+	for _, srcDir := range dirList {
+		srcDir = filepath.Join(ProjectPath, srcDir)
+
+		srcDir = strings.ReplaceAll(srcDir, "\\", "/") // 将windows路径中的反斜杠替换成斜杠
+		parentDir := filepath.Dir(srcDir) + "/"        // 获取全部上级文件夹
+
+		err = filepath.Walk(srcDir, func(everyFilePath string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+
+			if info.IsDir() { // 如果是文件夹
+				return nil
+			}
+
+			if info.Name() == ".verf" {
+				return nil
+			}
+
+			header, err := zip.FileInfoHeader(info)
+			if err != nil {
+				return err
+			}
+
+			everyFilePath = strings.ReplaceAll(everyFilePath, "\\", "/") // 实际文件路径
+			header.Name = strings.TrimPrefix(everyFilePath, parentDir)   // 压缩包内路径
+			log.Println(header.Name)
+
+			// 如果是文件
+			header.Method = zip.Deflate
+			writer, err := zipWriter.CreateHeader(header)
+			if err != nil {
+				return err
+			}
+
+			file, err := os.Open(everyFilePath)
+			if err != nil {
+				return err
+			}
+
+			_, err = io.Copy(writer, file)
+			file.Close()
+			return err
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// GetUnreviewUser 获取未审核员工信息
 func GetUnreviewUser(unreviewedUserList *[][2]string) error {
 	rows, err := db.Query(`SELECT PHONE, REALNAME FROM UNREVIEWED_USER`)
 	if err == sql.ErrNoRows {
@@ -36,7 +113,7 @@ func GetUnreviewUser(unreviewedUserList *[][2]string) error {
 	return nil
 }
 
-// 令未审核的员工全部通过
+// AllPass 令未审核的员工全部通过
 func AllPass() error {
 	_, err := db.Exec(`INSERT INTO USER SELECT * FROM UNREVIEWED_USER`)
 	if err != nil {
@@ -52,7 +129,7 @@ func AllPass() error {
 	return nil
 }
 
-// 部分通过
+// PartPass 部分通过
 func PartPass(unreviewedList *[][2]string, passedIndex *[]int) error {
 	for i, v := range *unreviewedList {
 		if intListContains(*passedIndex, i) {
@@ -73,6 +150,7 @@ func PartPass(unreviewedList *[][2]string, passedIndex *[]int) error {
 	return nil
 }
 
+// 整型切片中是否包含某个数字
 func intListContains(l []int, i int) bool {
 	for _, e := range l {
 		if e == i {
@@ -82,7 +160,7 @@ func intListContains(l []int, i int) bool {
 	return false
 }
 
-// 重置密码
+// ResetPwd 重置密码
 func ResetPwd(phone, newPwd string) error {
 	md5pwd := lib.MD5(newPwd)
 

@@ -18,9 +18,9 @@ func init() {
 func main() {
 	defer db.Close()
 
-	go UDPServer(":8080") // 开启用于注册和登录的UDP服务器
+	go UDPServer(PortUDP) // 开启用于注册和登录的UDP服务器
 
-	err := TCPServer(":8888") // 开启收发文件的TCP服务器
+	err := TCPServer(PortTCP) // 开启收发文件的TCP服务器
 	if err != nil {
 		log.Println("TCP服务器开启失败", err)
 	}

@@ -49,15 +49,6 @@ func TestSetProjectDir2(t *testing.T) {
 	}
 }
 
-func TestScanOverPackSubmit(t *testing.T) {
-	globalServerAddr = "127.0.0.1"
-	a := false
-	err := ScanOverPackSubmit("./testDir", "中石油", "13284030601", 0x0, &a)
-	if err != nil {
-		t.Errorf("%v\n", err)
-	}
-}
-
 func TestTodayWorkload(t *testing.T) {
 	globalServerAddr = "127.0.0.1"
 	globalPhone = "13284030601"

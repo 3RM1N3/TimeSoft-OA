@@ -11,11 +11,10 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sort"
 	"time"
-)
 
-var ErrScanTooFast = errors.New("你的扫描速度似乎有些快于常人，为判定是否作弊，请主动与管理员取得联系。")
+	"github.com/ying32/govcl/vcl"
+)
 
 // 获取当前已有客户
 func GetClientCo() ([]string, error) {
@@ -52,7 +51,7 @@ func SetProjectDir(dirPath string) error {
 	if r, err := CheckVerf(dirPath); err != nil {
 		return err
 	} else if !r {
-		return errors.New("文件夹校验失败，请选择曾用的项目文件夹或空文件夹")
+		return errors.New("校验码不匹配")
 	}
 
 	return nil
@@ -63,20 +62,19 @@ func CheckVerf(dirPath string) (bool, error) {
 	verfPath := path.Join(dirPath, ".verf")
 	f, err := os.Open(verfPath)
 	if err != nil {
-		log.Println("校验文件打开失败")
-		return false, err
+		return false, errors.New("校验文件不存在")
 	}
+	defer f.Close()
 
-	b := make([]byte, 40)
-	_, err = f.Read(b)
+	b := make([]byte, 50)
+	n, err := f.Read(b)
 	if err != nil {
 		return false, err
 	}
-	wantVerfStr := string(b)
+	wantVerfStr := string(b[:n])
 	gotVerfStr, err := GenVerf(dirPath, -1)
 	if err != nil {
-		log.Println("生成校验码失败")
-		return false, err
+		return false, errors.New("生成校验码失败")
 	}
 	if gotVerfStr != wantVerfStr {
 		return false, nil
@@ -95,8 +93,13 @@ func GenVerf(dirPath string, fileNum int) (string, error) {
 				return err
 			}
 
+			if path == dirPath {
+				return nil
+			}
+
 			if info.Name() == ".verf" {
 				return nil
+
 			} else if !info.IsDir() && filepath.Ext(info.Name()) != ".jpg" {
 				return nil
 			}
@@ -110,104 +113,102 @@ func GenVerf(dirPath string, fileNum int) (string, error) {
 		}
 	}
 
-	macs, err := GetMacAddrs()
-	if err != nil {
-		return "", err
-	}
-	sort.Strings(macs)
-
-	got := fmt.Sprintf("%s|%s|%d", "!g*657#JW@$", macs[0], fileNum)
+	got := fmt.Sprintf("%s|%s|%d", "!g*657#JW@$", macAddr, fileNum)
 
 	return "verify!#" + lib.MD5(got), nil
 }
 
-// 监测项目文件夹，increaseCh可以传出增长的文件数，errCh传出错误，
-// scanOver设置为true时扫描结束
-func DirWatcher(dirPath string, increaseCh chan int, errCh chan error, scanOver *bool) {
-
-	firstWatch := true
-	existNotJpg := false
-	preNum, fileNum := 0, 0
-
-	defer func() {
-		// 生成校验文件
-		s, err := GenVerf(dirPath, preNum)
-		if err != nil {
-			log.Println("生成校验字符串失败，请与管理员取得联系。")
-			errCh <- err
-			return
-		}
-		f, err := os.OpenFile(filepath.Join(dirPath, ".verf"), os.O_CREATE|os.O_WRONLY, 0755)
-		if err != nil {
-			log.Println("打开校验文件失败，请与管理员取得联系。")
-			errCh <- err
-			return
-		}
-		_, err = f.Write([]byte(s))
-		if err != nil {
-			log.Println("写入校验文件失败，请与管理员取得联系。")
-			errCh <- err
-		}
-	}()
-
-	for !*scanOver {
-		time.Sleep(5 * time.Second)
-
-		existNotJpg = false
-		err := filepath.Walk(dirPath, func(path string, info fs.FileInfo, err error) error {
+// 循环监测项目文件夹
+func DirWatcher() {
+	for {
+		_ = <-ChStartScan
+		preNum := 0
+		OverScan = false
+		d := 0
+		for !OverScan {
+			i, err := WatchDir(ProjectDir)
 			if err != nil {
-				return err
+				vcl.ThreadSync(func() {
+					vcl.ShowMessageFmt("%v", err)
+					MainForm.StatusBar.SetSimpleText("就绪")
+				})
+				ProjectDir = ""
+				break
 			}
-			if info.Name() == ".verf" {
-				return nil
+			if preNum == 0 {
+				preNum = i
+				continue
 			}
-			if !info.IsDir() && filepath.Ext(info.Name()) != ".jpg" {
-				existNotJpg = true
-				return nil
+			d = i - preNum
+			if d > 7 {
+				os.Remove(filepath.Join(ProjectDir, ".verf"))
+				vcl.ThreadSync(func() {
+					vcl.ShowMessageFmt("%v", ErrScanTooFast)
+					MainForm.StatusBar.SetSimpleText("就绪")
+				})
+				ProjectDir = ""
+				break
 			}
-			fileNum++
-			return nil
-		})
-		if err != nil {
-			errCh <- err
-			return
+			vcl.ThreadSync(func() {
+				t := fmt.Sprintf("当前速度%d个/分，现有%d个文件（夹）", d*12, i)
+				MainForm.StatusBar.SetSimpleText(t)
+			})
+			preNum = i
+			time.Sleep(5 * time.Second)
 		}
-
-		if existNotJpg {
-			log.Println("检测到非*.jpg格式文件，请确认扫描设置正确，删除格式错误的文件后重试。")
-		}
-
-		if firstWatch { // 第一次读取不判断速度
-			firstWatch = false
-			preNum, fileNum = fileNum, 0
-			continue
-		}
-
-		d := fileNum - preNum
-		if d > 7 {
-			log.Println("文件生成速度过快")
-			errCh <- ErrScanTooFast
-			return
-		}
-		if d >= 0 {
-			increaseCh <- d
-		}
-
-		preNum, fileNum = fileNum, 0
 	}
 }
 
-// 扫描结束，打包文件夹并提交，dirPath为要提交的文件夹，scanOver设置结束监测文件夹
-func ScanOverPackSubmit(dirPath, clientCo, uploader string, scanOrEdit byte, scanOver *bool) error {
-	*scanOver = true // 结束监测
+// 传入监测项目文件夹，生成校验文件并返回项目内文件数量或错误信息
+func WatchDir(dirPath string) (int, error) {
+	fileNum := 0
 
-	tempFile := ".temp_archive" + uploader
-	err := lib.Zip(dirPath, tempFile)
+	err := filepath.Walk(dirPath, func(path string, info fs.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if path == dirPath {
+			return nil
+		}
+		if info.Name() == ".verf" {
+			return nil
+		}
+		if !info.IsDir() && filepath.Ext(info.Name()) != ".jpg" {
+			return ErrFindNotJpg
+		}
+
+		fileNum++
+		return nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	verf, _ := GenVerf(dirPath, fileNum)
+
+	f, err := os.OpenFile(filepath.Join(dirPath, ".verf"), os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+
+	f.WriteString(verf)
+
+	return fileNum, nil
+}
+
+// 扫描结束，打包文件夹并提交，dirPath为要提交的文件夹，scanOver设置结束监测文件夹
+// 0为扫描1修图
+func PackSubmitDir(dirPath, clientCo, uploader string, scanOrEdit byte) error {
+
+	tempFile := ".temp_archive" + uploader // 临时文件名
+	defer os.Remove(tempFile)              // 函数返回后删除临时文件
+	err := lib.Zip(dirPath, tempFile)      // 压缩文件夹
 	if err != nil {
 		return err
 	}
 
-	conn, err := net.Dial("tcp", globalServerAddr+globalTCPPort)
+	conn, err := net.Dial("tcp", globalServerAddr+globalTCPPort) // 建立TCP连接
 	if err != nil {
 		return err
 	}
@@ -219,6 +220,26 @@ func ScanOverPackSubmit(dirPath, clientCo, uploader string, scanOrEdit byte, sca
 	}
 
 	return nil
+}
+
+// 下载并解压修图任务
+func SaveAndUnzip(dirPath string) ([]string, error) {
+	conn, err := net.Dial("tcp", globalServerAddr+globalTCPPort)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("与服务器连接成功，接收文件")
+	name, err := ClientReceiveFile([]string{}, conn)
+	if err != nil {
+		return nil, err
+	}
+	defer os.Remove(name)
+	fmt.Println("收到文件", name)
+	fileIDs, err := lib.Unzip(name, dirPath)
+	if err != nil {
+		return nil, err
+	}
+	return fileIDs, nil
 }
 
 // 获取今日工作量

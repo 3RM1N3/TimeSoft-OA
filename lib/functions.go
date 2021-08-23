@@ -66,7 +66,7 @@ func Zip(srcDir, destZip string) error {
 	srcDir = filepath.Clean(srcDir)
 
 	if _, err := os.Stat(destZip); err == nil { // 判断文件存在
-		if err = os.Remove(destZip); err != nil { // 不存在则移除
+		if err = os.Remove(destZip); err != nil { // 存在则移除
 			return err
 		}
 	}
@@ -91,6 +91,10 @@ func Zip(srcDir, destZip string) error {
 			return nil
 		}
 
+		if info.Name() == ".verf" {
+			return nil
+		}
+
 		header, err := zip.FileInfoHeader(info)
 		if err != nil {
 			return err
@@ -101,10 +105,6 @@ func Zip(srcDir, destZip string) error {
 		log.Println(header.Name)
 
 		if info.IsDir() { // 如果是文件夹
-			// header.Name += "/"
-			// if _, err := archive.CreateHeader(header); err != nil { // 创建header
-			// 	return err
-			// }
 			return nil
 		}
 

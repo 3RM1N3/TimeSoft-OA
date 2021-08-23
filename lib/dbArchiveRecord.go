@@ -1,6 +1,6 @@
 package lib
 
-// 发送文件和向数据库中存储时的结构体
+// DBArchiveRecord 发送文件和向数据库中存储时的结构体
 type DBArchiveRecord struct {
 	FileID      string        // FileID      档号：由字母、数字和英文横杠 “-” 按一定规则组成
 	ClientCo    string        // ClientCo    客户公司名称
@@ -14,6 +14,7 @@ type DBArchiveRecord struct {
 	Editor      string        // Editor      修图员工：员工ID
 	EditTime    int           // EditTime    修图上传时间
 	FileState   FileStateCode // FileState   文件状态
+	Reworked    FileStateCode // Reworked    返工信息
 	FileName    int           // FileName    文件名：本地文件名
 	SubFileNum  int           // 档号文件夹下的文件数
 	Size        int64         // Size        压缩包大小
@@ -21,12 +22,19 @@ type DBArchiveRecord struct {
 
 type FileStateCode byte
 
-const (
-	ScanOver       FileStateCode = iota // 扫描完毕待修图
-	Editting                            // 修图中
-	EditOver                            // 修图完毕未发生返工
-	NeedRework                          // 待返工的扫描
-	Reworking                           // 扫描返工中
-	ReworkOver                          // 返工完毕待修图
-	ReworkEditOver                      // 返工后再次修图完毕
+const ( // 任务表 返工表
+	ScanOver   FileStateCode = iota // 扫描完毕待修图 或 无返工
+	Editting                        // 修图中
+	EditOver                        // 修图完毕待审核
+	Checking                        // 审核中
+	CheckOver                       // 审核完毕
+	Reworking                       // 返工中
+	ReworkOver                      // 返工完毕待修图
+
+	ScanRework  // 待返工扫描
+	ScanRwking  // 扫描返工中
+	ScanRwkOver // 扫描返工完毕
+	EditRework  // 待返工修图
+	EditRwking  // 修图返工中
+	EditRwkOver // 修图返工完毕
 )

@@ -16,6 +16,8 @@ const (
 	Signup                        // 用于注册新账号
 	ClientCo                      // 用于获取现有的客户公司
 	WorkLoad                      // 用于获取今日工作量
+	EditMission                   // 获取员工修图任务
+	ReworkItem                    // 标记返工项目
 )
 
 const (

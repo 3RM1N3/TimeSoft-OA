@@ -5,18 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"log"
 	"net"
-	"os"
-)
-
-var globalPhone string      // 全局变量用户账号
-var globalServerAddr string // 全局服务器地址
-var (
-	globalTCPPort        = ":8888" // 远程TCP服务器端口
-	globalUDPPort        = ":8080" // 远程UDP服务器端口
-	globalReworkInterval = 1       // 返工任务刷新时间间隔，单位小时
+	"regexp"
 )
 
 type ScanedJob struct {
@@ -28,72 +19,36 @@ type ScanedJob struct {
 	UploadTime   int    `json:"uploadtime"`
 }
 
-// 读取配置文件config.json
-func init() {
-	// 定义全局变量结构体
-	config := struct {
-		GlobalTCPPort        string `json:"远程TCP服务器端口"`
-		GlobalUDPPort        string `json:"远程UDP服务器端口"`
-		GlobalReworkInterval int    `json:"返工任务刷新时间间隔/小时"`
-	}{
-		GlobalTCPPort:        globalTCPPort,
-		GlobalUDPPort:        globalUDPPort,
-		GlobalReworkInterval: globalReworkInterval,
-	}
+// 全局变量
 
-	// 检查配置文件存在与否
-	configFile := "config.json"
-	stat, err := os.Stat(configFile)
+var ( // config.json 控制
+	globalTCPPort        = ":8888" // 远程TCP服务器端口
+	globalUDPPort        = ":8080" // 远程UDP服务器端口
+	globalReworkInterval = 1       // 返工任务刷新时间间隔，单位小时
+)
 
-	if os.IsNotExist(err) { // 配置文件不存在，创建配置文件
-		f, err := os.Create(configFile)
-		if err != nil {
-			log.Printf("创建配置文件失败：%v\n", err)
-			os.Exit(1)
-		}
-		defer f.Close()
+var ( // 错误信息
+	ErrScanTooFast = errors.New("你的扫描速度似乎有些快于常人，为判定是否作弊，请主动与管理员取得联系。")
+	ErrFindNotJpg  = errors.New("检测到非*.jpg格式文件，请确认扫描设置正确，删除格式错误的文件后重试。")
+)
 
-		b, _ := json.MarshalIndent(&config, "", "    ")
-		_, err = f.Write(b)
-		if err != nil {
-			log.Println("写入配置文件失败")
-			os.Exit(1)
-		}
-		return
-	}
+var ( // 实例化窗体
+	SignupForm *TSignupForm // 注册窗体
+	LoginForm  *TLoginForm  // 登录窗体
+	MainForm   *TMainForm   // 主窗体
+)
 
-	// 配置文件存在
-	if stat.IsDir() { // 配置文件名被占用
-		log.Println("错误：文件名“config.json”被文件夹占用，请删除或重命名该文件夹后重试")
-		os.Exit(1)
-	}
+var globalPhone string       // 全局变量用户账号
+var globalServerAddr string  // 全局服务器地址
+var macAddr = ""             // 本机mac地址
+var ProjectDir = ""          // 全局项目文件夹
+var MissionList []string     // 任务列表
 
-	f, err := os.Open(configFile) // 打开配置文件
-	if err != nil {
-		log.Println("读取配置文件失败，使用默认参数")
-		return
-	}
-	defer f.Close()
+var MissionInProgress = false        // 是否有任务进行中
+var OverScan = false                 // 扫描结束
+var ChStartScan = make(chan bool, 2) // 开始监测项目文件夹
 
-	b, err := io.ReadAll(f) // 读取配置文件
-	if err != nil {
-		log.Println("读取配置文件失败，使用默认参数")
-		return
-	}
-
-	err = json.Unmarshal(b, &config)
-	if err != nil {
-		log.Println("配置文件包含语法错误，使用默认参数")
-		return
-	}
-
-	// 设置全局变量
-	globalTCPPort = config.GlobalTCPPort
-	globalUDPPort = config.GlobalUDPPort
-	globalReworkInterval = config.GlobalReworkInterval
-}
-
-// 注册账号
+// SignUpAccount 注册账号
 func SignUpAccount(address string, signupJson lib.SignUpJson) error {
 	b, err := sendUDPMsg(address, lib.Signup, signupJson)
 	if err != nil {
@@ -103,7 +58,7 @@ func SignUpAccount(address string, signupJson lib.SignUpJson) error {
 	return lib.ReportCode(b[0]).ToError()
 }
 
-// 用户登录
+// Login 用户登录
 func Login(address string, loginJson lib.LoginJson) error {
 	b, err := sendUDPMsg(address, lib.Login, loginJson)
 	if err != nil {
@@ -116,6 +71,21 @@ func Login(address string, loginJson lib.LoginJson) error {
 	}
 
 	return err
+}
+
+// 获取管理员分配的修图任务
+func getEditMission() (uint32, error) {
+	var editMissions = []string{globalPhone}
+	b, err := sendUDPMsg(globalServerAddr, lib.EditMission, editMissions)
+	if err != nil {
+		return 0, err
+	}
+
+	if len(b) == 1 {
+		return 0, lib.ReportCode(b[0]).ToError()
+	}
+
+	return lib.ByteToUint32(b)
 }
 
 // 发送udp消息，jsonStruct为要发送的结构体，返回收到的字节切片和错误类型；
@@ -135,7 +105,7 @@ func sendUDPMsg(address string, packType lib.PacketType, jsonStruct interface{})
 	defer udpConn.Close()
 
 	// 识别类型并发送数据
-	jsonData := []byte{}
+	var jsonData []byte
 	switch jsonStruct.(type) {
 	case nil:
 		break
@@ -150,7 +120,7 @@ func sendUDPMsg(address string, packType lib.PacketType, jsonStruct interface{})
 	}
 
 	// 接收返回消息
-	reportBytes := make([]byte, 1024)
+	reportBytes := make([]byte, 16384)
 	n, _, err = udpConn.ReadFromUDP(reportBytes)
 	if err != nil {
 		fmt.Println("读取数据失败")
@@ -160,9 +130,9 @@ func sendUDPMsg(address string, packType lib.PacketType, jsonStruct interface{})
 	return reportBytes[:n], nil
 }
 
-// 获取本机MAC地址
+// GetMacAddrs 获取本机MAC地址
 func GetMacAddrs() ([]string, error) {
-	macAddrs := []string{}
+	var macAddrs []string
 
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
@@ -178,13 +148,13 @@ func GetMacAddrs() ([]string, error) {
 	return macAddrs, nil
 }
 
-// 客户端从远端接收文件
-func ClientReceiveFile(fileList []string, conn *net.TCPConn) (string, error) {
+// ClientReceiveFile 客户端从远端接收文件
+func ClientReceiveFile(fileList []string, conn net.Conn) (string, error) {
 	defer conn.Close()
 
 	downloadHead := lib.FileReceiveHead{
 		FileList:   fileList,
-		Downloader: "13284030601",
+		Downloader: globalPhone,
 	}
 	fileHead, err := downloadHead.MakeHead()
 	if err != nil {
@@ -211,4 +181,23 @@ func ClientReceiveFile(fileList []string, conn *net.TCPConn) (string, error) {
 		return "", err
 	}
 	return sendHead.Name, nil
+}
+
+// ReworkItem 修图者设置返工任务
+func ReworkItem(fileID string) error {
+	b, err := sendUDPMsg(globalServerAddr, lib.ReworkItem, []string{fileID})
+	if err != nil {
+		return err
+	}
+
+	return lib.ReportCode(b[0]).ToError()
+}
+
+// VerifyStringRe 验证字符串是否完全符合正则表达式
+func VerifyStringRe(reString, dstString string) bool {
+	if dstString == "" {
+		return false
+	}
+	re := regexp.MustCompile(reString)
+	return dstString == re.FindString(dstString)
 }

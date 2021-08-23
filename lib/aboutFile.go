@@ -11,16 +11,17 @@ import (
 	"os"
 )
 
-// 上传文件的请求头
+// FileSendHead 上传文件的请求头
 type FileSendHead struct {
 	Name       string
 	Uploader   string
 	ClientCo   string
 	Size       int64
 	ScanOrEdit byte // 0为扫描1为修图
+	IsRework   bool // 返工则为true
 }
 
-// 下载文件的请求头
+// FileReceiveHead 下载文件的请求头
 type FileReceiveHead struct {
 	FileList   []string
 	Downloader string
@@ -34,7 +35,7 @@ func (h FileReceiveHead) MakeHead() ([]byte, error) {
 	return MakeHead(ReceiveHead, h)
 }
 
-// 创建请求头字节切片
+// MakeHead 创建请求头字节切片
 func MakeHead(SRType PacketType, some interface{}) ([]byte, error) {
 	b, err := json.Marshal(some)
 	if err != nil {
@@ -50,7 +51,7 @@ func MakeHead(SRType PacketType, some interface{}) ([]byte, error) {
 	return append(headByte, b...), nil
 }
 
-// 发送文件至远端
+// SendFile 发送文件至远端
 func SendFile(fileName, clientCo, uploader string, scanOrEdit byte, conn net.Conn) error {
 	fmt.Println("准备发送文件", fileName)
 	defer conn.Close()
@@ -126,14 +127,16 @@ func SendFile(fileName, clientCo, uploader string, scanOrEdit byte, conn net.Con
 	return nil
 }
 
-// 从远端接收文件，返回文件头json和错误
+// ReceiveFile 从远端接收文件，返回文件头json和错误
 func ReceiveFile(conn net.Conn) (FileSendHead, error) {
 	log.Println("接收文件")
 	var f *os.File
 	var head FileSendHead
 	writtenSize := 0
 	headSize := uint16(0)
-	buf := []byte{}
+	var buf []byte
+
+	defer f.Close()
 
 	for {
 		b := make([]byte, 524288)
@@ -178,7 +181,6 @@ func ReceiveFile(conn net.Conn) (FileSendHead, error) {
 				conn.Write([]byte{byte(Failed)})
 				return head, err
 			}
-			defer f.Close()
 			fmt.Println("创建本地文件成功")
 
 			conn.Write([]byte{byte(Success)}) // 告知对方接收成功
@@ -211,10 +213,6 @@ func ReceiveFile(conn net.Conn) (FileSendHead, error) {
 	// 接收完毕
 	//处理文件
 	fmt.Printf("文件%s接收成功\n", head.Name)
-	_, err := f.Seek(0, 0)
-	if err != nil {
-		f.Close()
-		return head, err
-	}
-	return head, err
+
+	return head, nil
 }
