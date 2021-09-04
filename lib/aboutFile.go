@@ -17,8 +17,7 @@ type FileSendHead struct {
 	Uploader   string
 	ClientCo   string
 	Size       int64
-	ScanOrEdit byte // 0为扫描1为修图
-	IsRework   bool // 返工则为true
+	SendType   byte // 0为扫描1为修图，2为扫描返工，3为修图返工
 }
 
 // FileReceiveHead 下载文件的请求头

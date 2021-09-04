@@ -144,21 +144,27 @@ func StoreFile(head lib.FileSendHead) error {
 	log.Printf("%s发来的文件%s解压完毕\n", head.Uploader, head.Name)
 
 	// 分情况操作数据库
-	if head.ScanOrEdit == 0x0 { // 扫描
-		if head.IsRework {
-			err = ReceiveScanRework(head, fileIDList)
-		} else {
-			err = ReceiveScanFile(head, fileIDList)
-		}
+	switch head.SendType {
+	case 0x0 : // 扫描
+		err = ReceiveScanFile(head, fileIDList)
 		if err != nil {
 			return err
 		}
-	} else { // 修图
-		if head.IsRework {
-			err = ReceiveEditRework(head, fileIDList)
-		} else {
-			err = ReceiveEditFile(head, fileIDList)
+
+	case 0x1 : // 修图
+		err = ReceiveEditFile(head, fileIDList)
+		if err != nil {
+			return err
 		}
+
+	case 0x2: // 扫描返工
+		err = ReceiveScanRework(head, fileIDList)
+		if err != nil {
+			return err
+		}
+
+	case 0x3: // 修图返工
+		err = ReceiveEditRework(head, fileIDList)
 		if err != nil {
 			return err
 		}
@@ -207,9 +213,15 @@ func ReceiveScanFile(head lib.FileSendHead, fileIDList []string) error {
 
 // ReceiveScanRework 接收扫描返工的文件提交
 func ReceiveScanRework(head lib.FileSendHead, fileIDList []string) error {
+	return nil
+}
+
+// ReceiveEditFile 接收修图的文件提交
+func ReceiveEditFile(head lib.FileSendHead, fileIDList []string) error {
 	var query = `UPDATE COMPLETED_TASK
-                  SET CLIENT_COMPANY = ?, SCANER = ?, SCAN_TIME = ?, FILE_STATE = ?, FILE_NUM = ?
+                  SET CLIENT_COMPANY = ?, EDITOR = ?, Edit_TIME = ?, FILE_STATE = ?, FILE_NUM = ?
     			  WHERE FILE_ID = ?;`
+
 	for _, j := range fileIDList {
 
 		// 写入数据库信息
@@ -217,7 +229,7 @@ func ReceiveScanRework(head lib.FileSendHead, fileIDList []string) error {
 		if err != nil {
 			return fmt.Errorf("读取文件数错误：%v", err)
 		}
-		_, err = db.Exec(query, head.ClientCo, head.Uploader, time.Now().Unix(), lib.ScanOver, n, j)
+		_, err = db.Exec(query, head.ClientCo, head.Uploader, time.Now().Unix(), lib.EditOver, n, j)
 		if err != nil {
 			return fmt.Errorf("操作数据库错误：%v", err)
 		}
@@ -226,28 +238,7 @@ func ReceiveScanRework(head lib.FileSendHead, fileIDList []string) error {
 	return nil
 }
 
-// ReceiveEditFile 接收修图的文件提交
-func ReceiveEditFile(head lib.FileSendHead, fileIDList []string) error {
-	// 写入数据库信息
-	n, err := getSubFileNum(filepath.Join(ProjectPath, head.ClientCo, j))
-	if err != nil {
-		return fmt.Errorf("读取文件数错误：%v", err)
-	}
-	_, err = db.Exec(query, head.ClientCo, head.Uploader, time.Now().Unix(), lib.EditOver, n, j)
-	if err != nil {
-		return fmt.Errorf("操作数据库错误：%v", err)
-	}
-}
-
 // ReceiveEditRework 接收修图返工的文件提交
 func ReceiveEditRework(head lib.FileSendHead, fileIDList []string) error {
-	// 写入数据库信息
-	n, err := getSubFileNum(filepath.Join(ProjectPath, head.ClientCo, j))
-	if err != nil {
-		return fmt.Errorf("读取文件数错误：%v", err)
+	return nil
 	}
-	_, err = db.Exec(query, head.ClientCo, head.Uploader, time.Now().Unix(), lib.EditOver, n, j)
-	if err != nil {
-		return fmt.Errorf("操作数据库错误：%v", err)
-	}
-}
