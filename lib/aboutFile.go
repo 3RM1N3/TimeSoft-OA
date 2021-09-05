@@ -26,6 +26,7 @@ type FileReceiveHead struct {
 	Downloader string
 }
 
+
 func (h *FileSendHead) MakeHead() ([]byte, error) {
 	return MakeHead(SendHead, h)
 }
@@ -34,7 +35,7 @@ func (h FileReceiveHead) MakeHead() ([]byte, error) {
 	return MakeHead(ReceiveHead, h)
 }
 
-// MakeHead 创建请求头字节切片
+// MakeHead 创建请求头字节切片，传入包类型和要编码的结构体，返回字节切片和错误
 func MakeHead(SRType PacketType, some interface{}) ([]byte, error) {
 	b, err := json.Marshal(some)
 	if err != nil {
@@ -51,6 +52,7 @@ func MakeHead(SRType PacketType, some interface{}) ([]byte, error) {
 }
 
 // SendFile 发送文件至远端
+// 传入文件名，客户公司名称，上传者账号，扫描或编辑（0 / 1），和net.Conn类型，返回错误
 func SendFile(fileName, clientCo, uploader string, scanOrEdit byte, conn net.Conn) error {
 	fmt.Println("准备发送文件", fileName)
 	defer conn.Close()

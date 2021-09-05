@@ -38,10 +38,12 @@ var codeErrMap = map[ReportCode]error{
 	Success:         nil,
 }
 
+// Pack 将返回码转换为字节切片
 func (c ReportCode) Pack() []byte {
 	return []byte{byte(c)}
 }
 
+// ToError 将返回码转换成错误类型
 func (c ReportCode) ToError() error {
 	e, ok := codeErrMap[c]
 	if !ok {

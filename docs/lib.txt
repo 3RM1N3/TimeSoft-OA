@@ -1,0 +1,162 @@
+package lib // import "TimeSoft-OA/lib"
+
+
+VARIABLES
+
+var codeErrMap = map[ReportCode]error{
+	Failed:          errors.New("远端发生错误"),
+	WrongIDOrPwd:    errors.New("账号或密码错误"),
+	DBOperateErr:    errors.New("数据库操作错误"),
+	Unlogin:         errors.New("尚未登录"),
+	ExistingAccount: errors.New("账号已存在"),
+	Success:         nil,
+}
+
+FUNCTIONS
+
+func ByteToUint16(b []byte) (uint16, error)
+    ByteToUint16 将字节切片解码为uint16类型
+
+func ByteToUint32(b []byte) (uint32, error)
+    ByteToUint32 将字节切片解码为uint32类型
+
+func GbkToUtf8(s []byte) (string, error)
+    GbkToUtf8 将gbk编码的字符串转码为utf-8
+
+func MD5(s string) string
+    MD5 单线程计算字符串的md5值
+
+func MakeHead(SRType PacketType, some interface{}) ([]byte, error)
+    MakeHead 创建请求头字节切片，传入包类型和要编码的结构体，返回字节切片和错误
+
+func SendFile(fileName, clientCo, uploader string, scanOrEdit byte, conn net.Conn) error
+    SendFile 发送文件至远端 传入文件名，客户公司名称，上传者账号，扫描或编辑（0 / 1），和net.Conn类型，返回错误
+
+func Uint16ToByte(i uint16) ([]byte, error)
+    Uint16ToByte 将uint16类型编码为字节切片
+
+func Uint32ToByte(i uint32) ([]byte, error)
+    Uint32ToByte 将uint32类型编码为字节切片
+
+func Unzip(srcZip, destDir string) ([]string, error)
+    Unzip 将.zip文件解压至目录，如果目录不存在则自动创建，返回解压的档号字符串切片
+
+func Zip(srcDir, destZip string) error
+    Zip 将目录下的内容压缩为.zip文件，不包含输入的目录本身
+
+
+TYPES
+
+type DBArchiveRecord struct {
+	FileID      string        // FileID      档号：由字母、数字和英文横杠 “-” 按一定规则组成
+	ClientCo    string        // ClientCo    客户公司名称
+	Year        int           // Year        年份
+	ArchiveType byte          // ArchiveType 档案类型/类别：人事档案、文书档案、业务档案、基建档案、设备档案、 党群类、行政工作类、经营管理类
+	StorageTime int           // StorageTime 保管期限（/年）：5(财务档案)、10、30、0(即为永久)
+	Department  int           // Department  部门：组织部、财务部等等
+	HeadOrBody  byte          // HeadOrBody  目录或正文：指该文件属于目录还是正文，包含两种值：目录、正文
+	Scaner      string        // Scaner      扫描员工：员工ID
+	ScanTime    int           // ScanTime    扫描上传时间
+	Editor      string        // Editor      修图员工：员工ID
+	EditTime    int           // EditTime    修图上传时间
+	FileState   FileStateCode // FileState   文件状态
+	Reworked    FileStateCode // Reworked    返工信息
+	FileName    int           // FileName    文件名：本地文件名
+	SubFileNum  int           // 档号文件夹下的文件数
+	Size        int64         // Size        压缩包大小
+}
+    DBArchiveRecord 发送文件和向数据库中存储时的结构体
+
+type FileReceiveHead struct {
+	FileList   []string
+	Downloader string
+}
+    FileReceiveHead 下载文件的请求头
+
+func (h FileReceiveHead) MakeHead() ([]byte, error)
+
+type FileSendHead struct {
+	Name     string
+	Uploader string
+	ClientCo string
+	Size     int64
+	SendType byte // 0为扫描1为修图，2为扫描返工，3为修图返工
+}
+    FileSendHead 上传文件的请求头
+
+func ReceiveFile(conn net.Conn) (FileSendHead, error)
+    ReceiveFile 从远端接收文件，返回文件头json和错误
+
+func (h *FileSendHead) MakeHead() ([]byte, error)
+
+type FileStateCode byte
+
+const (
+	ScanOver   FileStateCode = iota // 扫描完毕待修图 或 无返工
+	Editting                        // 修图中
+	EditOver                        // 修图完毕待审核
+	Checking                        // 审核中
+	CheckOver                       // 审核完毕
+	Reworking                       // 返工中
+	ReworkOver                      // 返工完毕待修图
+
+	ScanRework  // 待返工扫描
+	ScanRwking  // 扫描返工中
+	ScanRwkOver // 扫描返工完毕
+	EditRework  // 待返工修图
+	EditRwking  // 修图返工中
+	EditRwkOver // 修图返工完毕
+)
+type LoginJson struct {
+	PhoneNumber string
+	Pwd         string
+}
+    LoginJson 用户名密码登录json
+
+type PacketType byte // 定义数据包的类型
+
+const (
+	SendHead    PacketType = iota // 请求上传文件
+	ReceiveHead                   // 请求下载文件
+	Report                        // 汇报，用于汇报数据接受情况
+	Notice                        // 用于通知
+	PullList                      // 客户端请求获得数据表
+	PushList                      // 服务端用于推送表
+	Login                         // 用于登录
+	Signup                        // 用于注册新账号
+	ClientCo                      // 用于获取现有的客户公司
+	WorkLoad                      // 用于获取今日工作量
+	EditMission                   // 获取员工修图任务
+	ReworkItem                    // 标记返工项目
+)
+type ReportCode byte // 远端的返回码
+
+const (
+	Failed          ReportCode = iota // 失败
+	Success                           // 成功
+	WrongIDOrPwd                      // 用户名或密码错误
+	DBOperateErr                      // 数据库操作发生错误
+	Unlogin                           // 用户未登录
+	ExistingAccount                   // 已存在的账号
+)
+func (c ReportCode) Pack() []byte
+    Pack 将返回码转换为字节切片
+
+func (c ReportCode) ToError() error
+    ToError 将返回码转换成错误类型
+
+type SignUpJson struct {
+	PhoneNumber string
+	Pwd         string
+	RealName    string
+}
+    SignUpJson 注册账号json
+
+type WorkLoadJson struct {
+	Phone  string // 用户账号
+	Scan   int
+	Edit   int
+	Rework int
+}
+    WorkLoadJson 工作量统计
+

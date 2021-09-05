@@ -7,20 +7,21 @@ import (
 	"github.com/ying32/govcl/vcl/types/colors"
 )
 
-type TLoginForm struct {
-	*vcl.TForm
-	ButtonLogin    *vcl.TButton
-	EditServerAddr *vcl.TEdit
-	EditUser       *vcl.TEdit
+type TLoginForm struct { // 登录窗口
+	*vcl.TForm // 继承窗体类型
+	ButtonLogin    *vcl.TButton // 登录按钮
+	EditServerAddr *vcl.TEdit // 服务器地址输入框
+	EditUser       *vcl.TEdit // 用户名输入框
 	Label1         *vcl.TLabel
-	EditPwd        *vcl.TEdit
+	EditPwd        *vcl.TEdit // 密码输入框
 	Label2         *vcl.TLabel `events:"OnLabel1Click"`
 	Label3         *vcl.TLabel `events:"OnLabel1Click"`
-	LabelTitle     *vcl.TLabel
-	LabelSignUp    *vcl.TLabel
-	LabelForgetPwd *vcl.TLabel
+	LabelTitle     *vcl.TLabel // 标题
+	LabelSignUp    *vcl.TLabel // 注册按钮
+	LabelForgetPwd *vcl.TLabel // 忘记密码按钮
 }
 
+// OnFormCreate 登陆窗体创建时回调函数
 func (f *TLoginForm) OnFormCreate(sender vcl.IObject) {
 	// 登录窗口
 	f.SetBorderIcons(types.NewSet(types.BiSystemMenu))
@@ -158,7 +159,7 @@ func (f *TLoginForm) OnFormCreate(sender vcl.IObject) {
 	f.ButtonLogin.SetOnClick(f.OnLogin)
 }
 
-// 点击登录按钮
+// OnLogin 点击登录按钮事件
 func (f *TLoginForm) OnLogin(sender vcl.IObject) {
 	// 验证服务器地址合法性
 	serverAddr := f.EditServerAddr.Text()

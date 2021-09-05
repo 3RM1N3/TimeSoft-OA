@@ -8,7 +8,8 @@ import (
 	"os"
 )
 
-// 读取配置文件config.json
+// 读取配置文件config.json，若文件不存在则主动创建；
+// 配置文件可以手动设置tcp与udp服务器端口号；返工任务刷新时间间隔暂不生效
 func init() {
 	// 定义全局变量结构体
 	config := struct {

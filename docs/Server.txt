@@ -1,0 +1,94 @@
+package main // import "TimeSoft-OA/Server"
+
+
+VARIABLES
+
+var (
+	ProjectPath = "."
+	PortUDP     = ":8080"
+	PortTCP     = ":8888"
+)
+var UserEditMap = map[string][]string{}
+var db *sql.DB
+var udpDirector = map[byte]func(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn){
+	byte(lib.Signup):      processSignup,
+	byte(lib.Login):       processLogin,
+	byte(lib.ClientCo):    processClientCo,
+	byte(lib.WorkLoad):    processWorkload,
+	byte(lib.EditMission): processEditMission,
+	byte(lib.ReworkItem):  processMarkRework,
+}
+
+FUNCTIONS
+
+func AllPass() error
+    AllPass 令未审核的员工全部通过
+
+func GetUnreviewUser(unreviewedUserList *[][2]string) error
+    GetUnreviewUser 获取未审核员工信息
+
+func PartPass(unreviewedList *[][2]string, passedIndex *[]int) error
+    PartPass 部分通过
+
+func ReceiveEditFile(head lib.FileSendHead, fileIDList []string) error
+    ReceiveEditFile 接收修图的文件提交
+
+func ReceiveEditRework(head lib.FileSendHead, fileIDList []string) error
+    ReceiveEditRework 接收修图返工的文件提交
+
+func ReceiveScanFile(head lib.FileSendHead, fileIDList []string) error
+    ReceiveScanFile 接收扫描的文件提交
+
+func ReceiveScanRework(head lib.FileSendHead, fileIDList []string) error
+    ReceiveScanRework 接收扫描返工的文件提交
+
+func ResetPwd(phone, newPwd string) error
+    ResetPwd 重置密码
+
+func ServerSendFile(conn net.Conn) error
+    ServerSendFile TCP服务器发送文件给远端
+
+func StoreFile(head lib.FileSendHead) error
+    StoreFile 将收到的文件解包归档入库
+
+func TCPServer(address string) error
+    TCPServer 收发文件的TCP服务器
+
+func UDPServer(address string)
+    UDPServer 用于注册和登录的udp服务器
+
+func ZipDirs(dirList []string, destZip string) error
+    ZipDirs 压缩多个目录进一个文件
+
+func getSubFileNum(path string) (int, error)
+    获取文件夹内文件数
+
+func init()
+func intListContains(l []int, i int) bool
+    整型切片中是否包含某个数字
+
+func main()
+func processClientCo(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn)
+    处理客户公司名称的获取
+
+func processEditMission(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn)
+    处理客户端查询修图任务
+
+func processLogin(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn)
+    处理用户登录
+
+func processMarkRework(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn)
+    处理标记返工任务
+
+func processSignup(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn)
+    处理用户注册
+
+func processTCPConn(conn net.Conn)
+    处理TCP连接
+
+func processUDPMsg(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn)
+    处理UDP消息
+
+func processWorkload(udpMessage []byte, addr *net.UDPAddr, listen *net.UDPConn)
+    处理客户端获取工作量
+

@@ -8,10 +8,10 @@ import (
 
 // 提交后显示今日工作量
 
-type TMainForm struct {
-	*vcl.TForm
-	PageControl *vcl.TPageControl
-	StatusBar   *vcl.TStatusBar
+type TMainForm struct { // 主窗体
+	*vcl.TForm // 继承窗体类
+	PageControl *vcl.TPageControl // 页面控制器
+	StatusBar   *vcl.TStatusBar // 底部状态栏
 
 	// 扫描页面
 	PageScan      *vcl.TTabSheet

@@ -1,0 +1,207 @@
+package main // import "TimeSoft-OA/Client"
+
+
+VARIABLES
+
+var (
+	globalTCPPort        = ":8888" // 远程TCP服务器端口
+	globalUDPPort        = ":8080" // 远程UDP服务器端口
+	globalReworkInterval = 1       // 返工任务刷新时间间隔，单位小时
+)
+var (
+	ErrScanTooFast = errors.New("你的扫描速度似乎有些快于常人，为判定是否作弊，请主动与管理员取得联系。")
+	ErrFindNotJpg  = errors.New("检测到非*.jpg格式文件，请确认扫描设置正确，删除格式错误的文件后重试。")
+)
+var (
+	SignupForm *TSignupForm // 注册窗体
+	LoginForm  *TLoginForm  // 登录窗体
+	MainForm   *TMainForm   // 主窗体
+)
+var ChStartScan = make(chan bool, 2) // 开始监测项目文件夹
+var MissionInProgress = false // 是否有任务进行中
+var MissionList []string // 任务列表
+var OverScan = false // 扫描结束
+var ProjectDir = "" // 全局项目文件夹
+var globalPhone string // 全局变量用户账号
+var globalServerAddr string // 全局服务器地址
+var macAddr = "" // 本机mac地址
+
+FUNCTIONS
+
+func CheckVerf(dirPath string) (bool, error)
+    CheckVerf 校验.verf文件，根据文件夹内全部子文件夹和文件数量生成校验码，
+    与项目根目录中的文件校验文件对比，成功返回true否则false。
+
+func ClientReceiveFile(fileList []string, conn net.Conn) (string, error)
+    ClientReceiveFile 客户端从远端接收文件，第一个参数弃用，传入一个net.Conn类型； 返回文件名和错误
+
+func DirWatcher()
+    DirWatcher 循环监测项目文件夹，每隔5秒读取一次项目文件夹并生成校验字符串
+
+func GenVerf(dirPath string, fileNum int) (string, error)
+    GenVerf 生成.verf校验字符串 fileNum设置为-1，则读取文件夹生成字符串，否则使用fileNum值
+
+func GetClientCo() ([]string, error)
+    GetClientCo 获取当前已有客户，返回客户公司的字符串列表和错误
+
+func GetMacAddrs() ([]string, error)
+    GetMacAddrs 获取本机MAC地址，返回全部mac地址的字符串列表和错误
+
+func Login(address string, loginJson lib.LoginJson) error
+    Login 用户登录，传入服务器地址和登录结构体，返回错误
+
+func PackSubmitDir(dirPath, clientCo, uploader string, scanOrEdit byte) error
+    PackSubmitDir 扫描结束，打包文件夹并提交，dirPath为要提交的文件夹，scanOver设置结束监测文件夹 0为扫描1修图
+
+func ReworkItem(fileID string) error
+    ReworkItem 修图者设置返工任务，传入档号，如有错误返回错误类型
+
+func SaveAndUnzip(dirPath string) ([]string, error)
+    SaveAndUnzip 从服务器下载并解压文件，返回压缩包内档号名称和错误
+
+func SetProjectDir(dirPath string) error
+    SetProjectDir 设置项目文件夹，判断文件夹是否曾被项目使用， 若不是新项目验证.verf是否匹配。返回错误
+
+func SignUpAccount(address string, signupJson lib.SignUpJson) error
+    SignUpAccount 注册账号，传入服务器地址和注册结构体，返回错误
+
+func TodayWorkload() (lib.WorkLoadJson, error)
+    TodayWorkload 从服务器获取今日工作量，返回错误
+
+func VerifyStringRe(reString, dstString string) bool
+    VerifyStringRe 验证字符串是否完全符合正则表达式 传入正则字符串和待检测字符串，返回bool值
+
+func WatchDir(dirPath string) (int, error)
+    WatchDir 传入监测项目文件夹，生成校验文件并返回项目内文件数量或错误信息
+
+func getEditMission() (uint32, error)
+    从服务器获取管理员分配的修图任务，返回任务数量和错误
+
+func init()
+    读取配置文件config.json，若文件不存在则主动创建； 配置文件可以手动设置tcp与udp服务器端口号；返工任务刷新时间间隔暂不生效
+
+func main()
+func sendUDPMsg(address string, packType lib.PacketType, jsonStruct interface{}) ([]byte, error)
+    发送udp消息，jsonStruct为要发送的结构体，返回收到的字节切片和错误类型； address 为不包含端口的服务器地址，端口号从全局变量
+    globalUDPPort 获取； packetType为常量包类型
+
+
+TYPES
+
+type ScanedJob struct {
+	JobID        string `json:"jobid"`      // 任务ID
+	FolderName   string `json:"foldername"` // 文件夹名
+	SubFolderNum int    `json:"subfoldernum"`
+	AllFileNum   int    `json:"allfilenum"`
+	JobType      string `json:"jobtype"`
+	UploadTime   int    `json:"uploadtime"`
+}
+
+type TLoginForm struct {
+	*vcl.TForm                  // 继承窗体类型
+	ButtonLogin    *vcl.TButton // 登录按钮
+	EditServerAddr *vcl.TEdit   // 服务器地址输入框
+	EditUser       *vcl.TEdit   // 用户名输入框
+	Label1         *vcl.TLabel
+	EditPwd        *vcl.TEdit  // 密码输入框
+	Label2         *vcl.TLabel `events:"OnLabel1Click"`
+	Label3         *vcl.TLabel `events:"OnLabel1Click"`
+	LabelTitle     *vcl.TLabel // 标题
+	LabelSignUp    *vcl.TLabel // 注册按钮
+	LabelForgetPwd *vcl.TLabel // 忘记密码按钮
+}
+
+func (f *TLoginForm) OnForgetPwdClick(sender vcl.IObject)
+    点击忘记密码
+
+func (f *TLoginForm) OnFormCloseQuery(Sender vcl.IObject, CanClose *bool)
+    关闭登陆界面
+
+func (f *TLoginForm) OnFormCreate(sender vcl.IObject)
+    OnFormCreate 登陆窗体创建时回调函数
+
+func (f *TLoginForm) OnLogin(sender vcl.IObject)
+    OnLogin 点击登录按钮事件
+
+func (f *TLoginForm) OnSignUpClick(sender vcl.IObject)
+    点击注册账号
+
+type TMainForm struct {
+	*vcl.TForm                    // 继承窗体类
+	PageControl *vcl.TPageControl // 页面控制器
+	StatusBar   *vcl.TStatusBar   // 底部状态栏
+
+	// 扫描页面
+	PageScan      *vcl.TTabSheet
+	BtnSelectDir  *vcl.TButton
+	BtnSubmitScan *vcl.TButton
+	CoComboBox    *vcl.TComboBox
+	ListView      *vcl.TListView
+
+	// 修图页面
+	PageEditPic   *vcl.TTabSheet
+	BtnGetMission *vcl.TButton
+	BtnSubmitEdit *vcl.TButton
+	EditTaskList  *vcl.TListView
+
+	// 返工页面
+	PageRework   *vcl.TTabSheet
+	BtnGetRework *vcl.TButton
+	BtnSubmitRwk *vcl.TButton
+	RwkTaskList  *vcl.TListView
+}
+
+func (f *TMainForm) MakeEditPicTab()
+    创建修图标签页
+
+func (f *TMainForm) MakeReworkTab()
+    创建返工标签页
+
+func (f *TMainForm) MakeScanTab()
+    创建扫描标签页
+
+func (f *TMainForm) OnEditGetMission(sender vcl.IObject)
+    修图页面获取任务按钮
+
+func (f *TMainForm) OnEditSubmit(sender vcl.IObject)
+    修图提交按钮
+
+func (f *TMainForm) OnFormCreate(sender vcl.IObject)
+
+func (f *TMainForm) OnFormShow()
+    窗口显示时进行的操作
+
+func (f *TMainForm) OnScanSelectDir(sender vcl.IObject)
+    选择扫描项目文件夹按钮
+
+func (f *TMainForm) OnScanSubmit(sender vcl.IObject)
+    扫描提交按钮
+
+func (f *TMainForm) SetEditList(l []string)
+    设置修图页面的列表
+
+func (f *TMainForm) SetRework(sender vcl.IObject)
+    双击条目返工
+
+type TSignupForm struct {
+	*vcl.TForm
+	ButtonLogin    *vcl.TButton
+	EditServerAddr *vcl.TEdit
+	EditUser       *vcl.TEdit
+	Label1         *vcl.TLabel
+	EditPwd        *vcl.TEdit
+	EditPwdTwice   *vcl.TEdit
+	EditRealName   *vcl.TEdit
+	Label2         *vcl.TLabel
+	Label3         *vcl.TLabel
+	Label4         *vcl.TLabel
+	Label5         *vcl.TLabel
+}
+
+func (f *TSignupForm) OnFormCloseQuery(Sender vcl.IObject, CanClose *bool)
+
+func (f *TSignupForm) OnFormCreate(sender vcl.IObject)
+
+func (f *TSignupForm) OnSubmitClick(sender vcl.IObject)
+    点击提交按钮
+

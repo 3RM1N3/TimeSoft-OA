@@ -17,6 +17,7 @@ import (
 	"golang.org/x/text/transform"
 )
 
+// Uint16ToByte 将uint16类型编码为字节切片
 func Uint16ToByte(i uint16) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.BigEndian, i)
@@ -26,6 +27,7 @@ func Uint16ToByte(i uint16) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ByteToUint16 将字节切片解码为uint16类型
 func ByteToUint16(b []byte) (uint16, error) {
 	if len(b) == 0 {
 		return 0, nil
@@ -39,6 +41,7 @@ func ByteToUint16(b []byte) (uint16, error) {
 	return i, nil
 }
 
+// Uint32ToByte 将uint32类型编码为字节切片
 func Uint32ToByte(i uint32) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	err := binary.Write(buf, binary.BigEndian, i)
@@ -48,6 +51,7 @@ func Uint32ToByte(i uint32) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// ByteToUint32 将字节切片解码为uint32类型
 func ByteToUint32(b []byte) (uint32, error) {
 	if len(b) == 0 {
 		return 0, nil
@@ -61,7 +65,7 @@ func ByteToUint32(b []byte) (uint32, error) {
 	return i, nil
 }
 
-// Zip 将目录下的内容压缩为.zip文件
+// Zip 将目录下的内容压缩为.zip文件，不包含输入的目录本身
 func Zip(srcDir, destZip string) error {
 	srcDir = filepath.Clean(srcDir)
 
@@ -131,7 +135,7 @@ func Zip(srcDir, destZip string) error {
 	return nil
 }
 
-// Unzip 将.zip文件解压至目录，如果目录不存在则自动创建
+// Unzip 将.zip文件解压至目录，如果目录不存在则自动创建，返回解压的档号字符串切片
 func Unzip(srcZip, destDir string) ([]string, error) {
 	destDir = path.Clean(destDir) // 整理目录字符串
 	fileIDList := []string{}      // 初始化档号列表
@@ -184,7 +188,7 @@ func Unzip(srcZip, destDir string) ([]string, error) {
 	return fileIDList, nil
 }
 
-// 将gbk编码的字符串转码为utf-8
+// GbkToUtf8 将gbk编码的字符串转码为utf-8
 func GbkToUtf8(s []byte) (string, error) {
 	reader := transform.NewReader(bytes.NewReader(s), simplifiedchinese.GBK.NewDecoder())
 	d, e := io.ReadAll(reader)
@@ -194,7 +198,7 @@ func GbkToUtf8(s []byte) (string, error) {
 	return string(d), nil
 }
 
-// 计算字符串的md5值
+// MD5 单线程计算字符串的md5值
 func MD5(s string) string {
 	b := []byte(s)
 	return fmt.Sprintf("%X", md5.Sum(b))

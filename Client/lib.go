@@ -11,8 +11,8 @@ import (
 )
 
 type ScanedJob struct {
-	JobID        string `json:"jobid"`
-	FolderName   string `json:"foldername"`
+	JobID        string `json:"jobid"` // 任务ID
+	FolderName   string `json:"foldername"` // 文件夹名
 	SubFolderNum int    `json:"subfoldernum"`
 	AllFileNum   int    `json:"allfilenum"`
 	JobType      string `json:"jobtype"`
@@ -48,7 +48,7 @@ var MissionInProgress = false        // 是否有任务进行中
 var OverScan = false                 // 扫描结束
 var ChStartScan = make(chan bool, 2) // 开始监测项目文件夹
 
-// SignUpAccount 注册账号
+// SignUpAccount 注册账号，传入服务器地址和注册结构体，返回错误
 func SignUpAccount(address string, signupJson lib.SignUpJson) error {
 	b, err := sendUDPMsg(address, lib.Signup, signupJson)
 	if err != nil {
@@ -58,7 +58,7 @@ func SignUpAccount(address string, signupJson lib.SignUpJson) error {
 	return lib.ReportCode(b[0]).ToError()
 }
 
-// Login 用户登录
+// Login 用户登录，传入服务器地址和登录结构体，返回错误
 func Login(address string, loginJson lib.LoginJson) error {
 	b, err := sendUDPMsg(address, lib.Login, loginJson)
 	if err != nil {
@@ -73,7 +73,7 @@ func Login(address string, loginJson lib.LoginJson) error {
 	return err
 }
 
-// 获取管理员分配的修图任务
+// 从服务器获取管理员分配的修图任务，返回任务数量和错误
 func getEditMission() (uint32, error) {
 	var editMissions = []string{globalPhone}
 	b, err := sendUDPMsg(globalServerAddr, lib.EditMission, editMissions)
@@ -89,7 +89,8 @@ func getEditMission() (uint32, error) {
 }
 
 // 发送udp消息，jsonStruct为要发送的结构体，返回收到的字节切片和错误类型；
-// address 为不包含端口的服务器地址，端口号从全局变量 globalUDPPort 获取
+// address 为不包含端口的服务器地址，端口号从全局变量 globalUDPPort 获取；
+// packetType为常量包类型
 func sendUDPMsg(address string, packType lib.PacketType, jsonStruct interface{}) ([]byte, error) {
 	// 创建连接
 	udpAddr, err := net.ResolveUDPAddr("udp", address+globalUDPPort)
@@ -130,7 +131,7 @@ func sendUDPMsg(address string, packType lib.PacketType, jsonStruct interface{})
 	return reportBytes[:n], nil
 }
 
-// GetMacAddrs 获取本机MAC地址
+// GetMacAddrs 获取本机MAC地址，返回全部mac地址的字符串列表和错误
 func GetMacAddrs() ([]string, error) {
 	var macAddrs []string
 
@@ -148,7 +149,8 @@ func GetMacAddrs() ([]string, error) {
 	return macAddrs, nil
 }
 
-// ClientReceiveFile 客户端从远端接收文件
+// ClientReceiveFile 客户端从远端接收文件，第一个参数弃用，传入一个net.Conn类型；
+// 返回文件名和错误
 func ClientReceiveFile(fileList []string, conn net.Conn) (string, error) {
 	defer conn.Close()
 
@@ -183,7 +185,7 @@ func ClientReceiveFile(fileList []string, conn net.Conn) (string, error) {
 	return sendHead.Name, nil
 }
 
-// ReworkItem 修图者设置返工任务
+// ReworkItem 修图者设置返工任务，传入档号，如有错误返回错误类型
 func ReworkItem(fileID string) error {
 	b, err := sendUDPMsg(globalServerAddr, lib.ReworkItem, []string{fileID})
 	if err != nil {
@@ -194,6 +196,7 @@ func ReworkItem(fileID string) error {
 }
 
 // VerifyStringRe 验证字符串是否完全符合正则表达式
+// 传入正则字符串和待检测字符串，返回bool值
 func VerifyStringRe(reString, dstString string) bool {
 	if dstString == "" {
 		return false

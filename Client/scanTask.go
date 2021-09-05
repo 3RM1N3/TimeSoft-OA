@@ -16,7 +16,7 @@ import (
 	"github.com/ying32/govcl/vcl"
 )
 
-// 获取当前已有客户
+// GetClientCo 获取当前已有客户，返回客户公司的字符串列表和错误
 func GetClientCo() ([]string, error) {
 	b, err := sendUDPMsg(globalServerAddr, lib.ClientCo, nil)
 	if err != nil {
@@ -36,7 +36,8 @@ func GetClientCo() ([]string, error) {
 	return clientCos, nil
 }
 
-// 设置项目文件夹
+// SetProjectDir 设置项目文件夹，判断文件夹是否曾被项目使用，
+// 若不是新项目验证.verf是否匹配。返回错误
 func SetProjectDir(dirPath string) error {
 	dirEntryList, err := os.ReadDir(dirPath)
 	if err != nil {
@@ -57,7 +58,8 @@ func SetProjectDir(dirPath string) error {
 	return nil
 }
 
-// 校验.verf文件
+// CheckVerf 校验.verf文件，根据文件夹内全部子文件夹和文件数量生成校验码，
+// 与项目根目录中的文件校验文件对比，成功返回true否则false。
 func CheckVerf(dirPath string) (bool, error) {
 	verfPath := path.Join(dirPath, ".verf")
 	f, err := os.Open(verfPath)
@@ -83,7 +85,7 @@ func CheckVerf(dirPath string) (bool, error) {
 	return true, nil
 }
 
-// 生成.verf校验字符串
+// GenVerf 生成.verf校验字符串
 // fileNum设置为-1，则读取文件夹生成字符串，否则使用fileNum值
 func GenVerf(dirPath string, fileNum int) (string, error) {
 	if fileNum == -1 {
@@ -118,7 +120,7 @@ func GenVerf(dirPath string, fileNum int) (string, error) {
 	return "verify!#" + lib.MD5(got), nil
 }
 
-// 循环监测项目文件夹
+// DirWatcher 循环监测项目文件夹，每隔5秒读取一次项目文件夹并生成校验字符串
 func DirWatcher() {
 	for {
 		_ = <-ChStartScan
@@ -159,7 +161,7 @@ func DirWatcher() {
 	}
 }
 
-// 传入监测项目文件夹，生成校验文件并返回项目内文件数量或错误信息
+// WatchDir 传入监测项目文件夹，生成校验文件并返回项目内文件数量或错误信息
 func WatchDir(dirPath string) (int, error) {
 	fileNum := 0
 
@@ -197,7 +199,7 @@ func WatchDir(dirPath string) (int, error) {
 	return fileNum, nil
 }
 
-// 扫描结束，打包文件夹并提交，dirPath为要提交的文件夹，scanOver设置结束监测文件夹
+// PackSubmitDir 扫描结束，打包文件夹并提交，dirPath为要提交的文件夹，scanOver设置结束监测文件夹
 // 0为扫描1修图
 func PackSubmitDir(dirPath, clientCo, uploader string, scanOrEdit byte) error {
 
@@ -222,7 +224,7 @@ func PackSubmitDir(dirPath, clientCo, uploader string, scanOrEdit byte) error {
 	return nil
 }
 
-// 下载并解压修图任务
+// SaveAndUnzip 从服务器下载并解压文件，返回压缩包内档号名称和错误
 func SaveAndUnzip(dirPath string) ([]string, error) {
 	conn, err := net.Dial("tcp", globalServerAddr+globalTCPPort)
 	if err != nil {
@@ -242,7 +244,7 @@ func SaveAndUnzip(dirPath string) ([]string, error) {
 	return fileIDs, nil
 }
 
-// 获取今日工作量
+// TodayWorkload 从服务器获取今日工作量，返回错误
 func TodayWorkload() (lib.WorkLoadJson, error) {
 	var todayWorkload = lib.WorkLoadJson{
 		Phone: globalPhone,
